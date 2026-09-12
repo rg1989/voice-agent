@@ -581,6 +581,13 @@ export const config = {
   reminderSchedulerEnabled: String(
     process.env.QWEN_AUDIO_AGENT_REMINDER_SCHEDULER || 'true'
   ).toLowerCase() === 'true',
+  // Off by default: the shipped behaviour sends the backend Agent's full reply
+  // to the Realtime provider so it can present the result. Turning this on
+  // forwards only a VOICE: line the backend authored, which keeps file
+  // contents, paths and secrets quoted in a summary off the wire.
+  voiceSummaryOnly: String(
+    process.env.QWEN_AUDIO_VOICE_SUMMARY_ONLY || 'false'
+  ).toLowerCase() === 'true',
   reminderMaxPerOwner: numberSetting(
     process.env.QWEN_AUDIO_AGENT_REMINDER_MAX_PER_OWNER,
     50,

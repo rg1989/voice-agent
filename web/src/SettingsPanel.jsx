@@ -149,6 +149,22 @@ export default function SettingsPanel({ onClose, setOutputVoice }) {
           </div>
         </section>
 
+        <section className="settings-group">
+          <h4>{t('隐私')}</h4>
+          <label className="settings-toggle">
+            <input
+              type="checkbox"
+              checked={Boolean(settings.summaryOnly)}
+              disabled={disabled}
+              onChange={event => save({ summaryOnly: event.target.checked })}
+            />
+            <span>
+              <b>{t('只把一句话摘要发给语音模型')}</b>
+              <small>{t('后台 Agent 的完整回复默认会发给语音服务商，好让它念出来。开启后只转发后台自己写的 VOICE: 那一行；没写就只说一句：完成了，结果在屏幕上。')}</small>
+            </span>
+          </label>
+        </section>
+
         <p className="settings-hint settings-footnote">
           {t('切换大脑或工作目录会重启 Gateway，正在进行的任务会中断；换音色不会。')}
         </p>

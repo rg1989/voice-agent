@@ -2,6 +2,7 @@ import {
   AgentDeliveryMode,
   createAgentDelivery,
 } from '../delivery/agent-delivery.mjs'
+import { config } from '../core/config.mjs'
 
 // ponytail: fail closed — only a backend-authored VOICE: line reaches the
 // cloud speech model. No line, no detail. The screen still gets the full text
@@ -12,7 +13,8 @@ const FALLBACK = 'Done. The full result is on screen.'
 // client events are Gateway-authored and must pass through untouched.
 const BACKEND_ORIGINS = new Set(['announcement', 'progress'])
 
-export function voiceSafe(text, origin) {
+export function voiceSafe(text, origin, { enabled = config.voiceSummaryOnly } = {}) {
+  if (!enabled) return text
   if (!BACKEND_ORIGINS.has(origin)) return text
   const match = String(text || '').match(VOICE_LINE)
   return match ? match[1].trim().slice(0, 400) : FALLBACK

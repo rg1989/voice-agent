@@ -1,4 +1,7 @@
 const translations = {
+  '隐私': 'Privacy',
+  '只把一句话摘要发给语音模型': 'Send only a one-line summary to the voice model',
+  '后台 Agent 的完整回复默认会发给语音服务商，好让它念出来。开启后只转发后台自己写的 VOICE: 那一行；没写就只说一句：完成了，结果在屏幕上。': 'By default the agent full reply is sent to the voice provider so it can read it out. With this on, only the VOICE: line the agent wrote is forwarded, and if it wrote none, just: Done. The full result is on screen.',
   '试听 {name}': 'Preview {name}',
   '试听失败': 'Preview failed',
   '切换大脑或工作目录会重启 Gateway，正在进行的任务会中断；换音色不会。': 'Changing the brain or working folder restarts the gateway and interrupts any task in progress. Changing the voice does not.',

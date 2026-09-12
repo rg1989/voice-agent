@@ -2064,3 +2064,21 @@ header:has(.workspace-switch) .runtime-status + * { margin-left: auto; }
 .settings-option.voice .voice-sample:hover:not(:disabled) { color: #fff; background: #ffffff12; }
 .settings-option.voice .voice-sample.playing { color: #b3a9ff; background: rgba(124, 108, 246, 0.2); }
 .settings-option.voice .voice-sample:disabled { opacity: 0.4; cursor: default; }
+
+.settings-toggle {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-top: 10px;
+  padding: 11px 12px;
+  border: 1px solid #ffffff12;
+  border-radius: 12px;
+  background: #ffffff06;
+  cursor: pointer;
+}
+
+.settings-toggle input { margin-top: 2px; flex: 0 0 auto; accent-color: #7c6cf6; }
+.settings-toggle span { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.settings-toggle b { font-size: 13px; font-weight: 600; }
+.settings-toggle small { font-size: 11px; line-height: 1.5; color: #9a9ea7; }
+.settings-toggle:has(input:disabled) { opacity: 0.5; cursor: default; }

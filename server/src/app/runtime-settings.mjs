@@ -18,6 +18,7 @@ const CONFIG_KEYS = Object.freeze({
   folder: 'QWAUDIO_WORKSPACE',
   voice: 'QWEN_OMNI_REALTIME_VOICE',
   audioVoice: 'QWEN_AUDIO_REALTIME_VOICE',
+  summaryOnly: 'QWEN_AUDIO_VOICE_SUMMARY_ONLY',
 })
 
 // Voices confirmed against Alibaba's Qwen-Omni-Realtime voice list.
@@ -97,6 +98,7 @@ export function readRuntimeSettings() {
     folder: valueOf(lines, CONFIG_KEYS.folder),
     voice: valueOf(lines, CONFIG_KEYS.voice) || valueOf(lines, CONFIG_KEYS.audioVoice),
     voices: OMNI_VOICES,
+    summaryOnly: valueOf(lines, CONFIG_KEYS.summaryOnly).toLowerCase() === 'true',
   }
 }
 
@@ -153,6 +155,13 @@ export function updateRuntimeSettings(patch = {}) {
     changed.push('voice')
   }
 
+  if (typeof patch.summaryOnly === 'boolean') {
+    lines = applyValues(lines, {
+      [CONFIG_KEYS.summaryOnly]: patch.summaryOnly ? 'true' : null,
+    })
+    changed.push('summaryOnly')
+  }
+
   if (!changed.length) return { changed }
   writeConfig(lines)
   return { changed }
@@ -168,6 +177,7 @@ const MANAGED_ENV_KEYS = Object.freeze([
   CONFIG_KEYS.folder,
   CONFIG_KEYS.voice,
   CONFIG_KEYS.audioVoice,
+  CONFIG_KEYS.summaryOnly,
   'ACP_COMMAND',
   'ACP_ARGS',
   'ACP_LABEL',
