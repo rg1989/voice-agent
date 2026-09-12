@@ -721,6 +721,12 @@ app.post('/api/settings', (req, res) => {
     return res.json({ changed: [], restarting: false, settings: readRuntimeSettings() })
   }
   const settings = readRuntimeSettings()
+  // The voice applies live over session.output_voice.update, so persisting it
+  // is all the server has to do; restarting would drop the conversation for
+  // no reason. Brain and folder are read at startup and still need one.
+  if (result.changed.every(key => key === 'voice')) {
+    return res.json({ changed: result.changed, restarting: false, settings })
+  }
   let restarting = false
   try {
     restarting = scheduleRestart().restarting

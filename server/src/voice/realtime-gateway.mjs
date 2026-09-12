@@ -132,6 +132,18 @@ function rejectUpgrade(socket, status, message) {
   socket.destroy()
 }
 
+// How long a sampled voice stays on the session before it reverts.
+const VOICE_SAMPLE_HOLD_MS = 7000
+
+// One short, self-describing line. Naming the voice makes a row of samples
+// tellable apart when several are auditioned in a row.
+export function voiceSampleLine(voice) {
+  const name = String(voice || '').trim()
+  return name
+    ? `Hi, I'm ${name}. This is how I sound.`
+    : 'This is how I sound.'
+}
+
 export function rejectUnsupportedRealtimeUpgrade(socket, pathname) {
   if (pathname === '/api/realtime') return false
   socket.destroy()
@@ -1399,12 +1411,43 @@ export function attachRealtimeGateway(server, {
         return
       }
       if (message.type === GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATE) {
+        const previousVoice = sessionOutputVoice
         const result = updateSessionOutputVoice(message.voice)
         send(ws, {
           type: GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATED,
           request_event_id: message.event_id,
           ...result,
         })
+        // A provider applies voice selection when it creates a Session, so the
+        // sample has to wait for the rebuilt one. speak() uses the provider's
+        // speak response, which is conversation: 'none' -- auditioning a voice
+        // must not leave anything in the transcript. Afterwards the session
+        // goes back to the voice it was on, so a preview cannot quietly become
+        // the voice in use while the saved setting says otherwise.
+        if (message.sample) {
+          realtimeSession.ensure()
+            .then(() => realtimeSession.frontend?.speak(
+              voiceSampleLine(message.voice),
+              'voice-sample',
+            ))
+            .catch(reportFrontendError)
+          // The revert is on its own timer rather than chained to speak():
+          // a provider that never reports the sample finished would otherwise
+          // strand the session on an auditioned voice forever.
+          // An empty previous voice is meaningful: it means the session had no
+          // override and was using the configured default, so restoring '' is
+          // what puts the configured voice back.
+          if (previousVoice !== message.voice) {
+            setTimeout(() => {
+              if (sessionOutputVoice !== message.voice) return
+              try {
+                updateSessionOutputVoice(previousVoice)
+              } catch (error) {
+                reportFrontendError(error)
+              }
+            }, VOICE_SAMPLE_HOLD_MS)
+          }
+        }
         return
       }
       if (message.type === GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH) {

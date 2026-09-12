@@ -1047,6 +1047,13 @@ export default function useRealtimeVoice({
   const conversationHistory = useCallback(() => requestGateway(
     GatewayClientProtocolEvent.CONVERSATION_HISTORY,
   ).then(result => result.messages), [requestGateway])
+  // Providers pick the voice when they create a Session, so switching rebuilds
+  // the provider Session while this client connection stays up. `sample` makes
+  // the assistant speak one line in the new voice, for auditioning.
+  const setOutputVoice = useCallback((voice, { sample = false } = {}) => requestGateway(
+    GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATE,
+    { voice, ...(sample ? { sample: true } : {}) },
+  ), [requestGateway])
 
   const sendInput = useCallback(parts => {
     holdManualInputGuard()
@@ -1114,5 +1121,6 @@ export default function useRealtimeVoice({
     cancelTask,
     respondPermission,
     conversationHistory,
+    setOutputVoice,
   }
 }

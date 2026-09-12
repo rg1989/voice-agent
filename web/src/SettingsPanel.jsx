@@ -15,12 +15,13 @@ import {
 // 目录用服务端列目录 + 点击进入的方式选：浏览器的 <input type="file"> 拿不到
 // 真实路径，那是安全限制。Gateway 本来就跑在本机，列目录比让人手抄路径好得多。
 
-export default function SettingsPanel({ onClose }) {
+export default function SettingsPanel({ onClose, setOutputVoice }) {
   const [settings, setSettings] = useState(null)
   const [browsing, setBrowsing] = useState(false)
   const [busy, setBusy] = useState(false)
   const [restarting, setRestarting] = useState(false)
   const [error, setError] = useState('')
+  const [sampling, setSampling] = useState('')
 
   const refresh = useCallback(async () => {
     try {
@@ -38,6 +39,9 @@ export default function SettingsPanel({ onClose }) {
     setError('')
     try {
       const payload = await saveSettings(patch)
+      if (patch.voice && !payload.restarting && setOutputVoice) {
+        await setOutputVoice(patch.voice).catch(() => {})
+      }
       if (payload.restarting) {
         setRestarting(true)
         const ok = await waitForGatewayThenReload()
@@ -53,7 +57,7 @@ export default function SettingsPanel({ onClose }) {
     } finally {
       setBusy(false)
     }
-  }, [busy, restarting, refresh])
+  }, [busy, restarting, refresh, setOutputVoice])
 
   const disabled = busy || restarting || !settings
 
@@ -110,21 +114,43 @@ export default function SettingsPanel({ onClose }) {
           <h4>{t('音色')}</h4>
           <p className="settings-hint">{t('助手说话的嗓音。英语默认用 Aiden 或 Jennifer。')}</p>
           <div className="settings-options">
-            {settings.voices.map(option => <button
+            {settings.voices.map(option => <div
               key={option.id}
-              type="button"
-              className={`settings-option${settings.voice === option.id ? ' selected' : ''}`}
-              disabled={disabled}
-              onClick={() => save({ voice: option.id })}
+              className={`settings-option voice${settings.voice === option.id ? ' selected' : ''}`}
             >
-              <b>{option.label}</b>
-              <small>{option.detail}</small>
-            </button>)}
+              <button
+                type="button"
+                className="voice-pick"
+                disabled={disabled}
+                onClick={() => save({ voice: option.id })}
+              >
+                <b>{option.label}</b>
+                <small>{option.detail}</small>
+              </button>
+              {setOutputVoice && <button
+                type="button"
+                className={`voice-sample${sampling === option.id ? ' playing' : ''}`}
+                disabled={disabled || Boolean(sampling)}
+                aria-label={t('试听 {name}', { name: option.label })}
+                title={t('试听 {name}', { name: option.label })}
+                onClick={async () => {
+                  setSampling(option.id)
+                  setError('')
+                  try {
+                    await setOutputVoice(option.id, { sample: true })
+                  } catch (caught) {
+                    setError(caught.message || t('试听失败'))
+                  } finally {
+                    setSampling('')
+                  }
+                }}
+              >▶</button>}
+            </div>)}
           </div>
         </section>
 
         <p className="settings-hint settings-footnote">
-          {t('改动会重启 Gateway，正在进行的任务会中断。')}
+          {t('切换大脑或工作目录会重启 Gateway，正在进行的任务会中断；换音色不会。')}
         </p>
       </>}
   </aside>

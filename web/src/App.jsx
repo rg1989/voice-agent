@@ -1442,7 +1442,10 @@ export default function App() {
         onClose={() => setShowKnowledgeLibrary(false)}
         getTask={voice.getTask}
       />}
-      {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
+      {showSettings && <SettingsPanel
+        onClose={() => setShowSettings(false)}
+        setOutputVoice={voice.setOutputVoice}
+      />}
       <div className="hero">
         <button
           className={`orb ${orbVisualState}`}

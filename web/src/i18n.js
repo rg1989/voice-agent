@@ -1,4 +1,7 @@
 const translations = {
+  '试听 {name}': 'Preview {name}',
+  '试听失败': 'Preview failed',
+  '切换大脑或工作目录会重启 Gateway，正在进行的任务会中断；换音色不会。': 'Changing the brain or working folder restarts the gateway and interrupts any task in progress. Changing the voice does not.',
   '在这里工作': 'Work here',
   '后台 Agent 在哪个文件夹里干活，也就是它看得到的上下文。': 'The folder the agent works in — the context it can see.',
   '选择文件夹': 'Choose folder',

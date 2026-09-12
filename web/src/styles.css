@@ -2026,3 +2026,41 @@ header:has(.workspace-switch) .runtime-status + * { margin-left: auto; }
 .knowledge-panel::-webkit-scrollbar-corner {
   background: transparent;
 }
+
+/* 音色卡片：左边选用，右边试听 */
+.settings-option.voice {
+  flex-direction: row;
+  align-items: stretch;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.settings-option.voice .voice-pick {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 10px 12px;
+  text-align: left;
+  color: inherit;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.settings-option.voice .voice-sample {
+  flex: 0 0 auto;
+  width: 34px;
+  font-size: 10px;
+  color: #9a9ea7;
+  border: 0;
+  border-left: 1px solid #ffffff12;
+  background: #ffffff05;
+  cursor: pointer;
+}
+
+.settings-option.voice .voice-sample:hover:not(:disabled) { color: #fff; background: #ffffff12; }
+.settings-option.voice .voice-sample.playing { color: #b3a9ff; background: rgba(124, 108, 246, 0.2); }
+.settings-option.voice .voice-sample:disabled { opacity: 0.4; cursor: default; }
