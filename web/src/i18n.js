@@ -1,4 +1,5 @@
 const translations = {
+  '在这里工作': 'Work here',
   '后台 Agent 在哪个文件夹里干活，也就是它看得到的上下文。': 'The folder the agent works in — the context it can see.',
   '选择文件夹': 'Choose folder',
   '默认暂存目录': 'Default scratch folder',

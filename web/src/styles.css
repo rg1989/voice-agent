@@ -1829,3 +1829,96 @@ article.user .message-body .inline-code { background: #5e44c9; color: #f0eaff; }
   border-color: #7c6cf6;
   background: rgba(124, 108, 246, 0.28);
 }
+
+/* Header 中央的工作区指示器：随时看得见在哪个项目里干活。
+   它占据 brand 与右侧状态区之间的整条空档并居中，所以既在视线中央，
+   又不会压住型号和状态 —— header 只有 68px，重叠比偏移更糟。 */
+header { position: relative; }
+header:has(.workspace-switch) .backend { margin-left: 0; }
+
+.workspace-switch {
+  position: relative;
+  z-index: 30;
+  flex: 1 1 auto;
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+}
+
+.workspace-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 340px;
+  padding: 7px 12px;
+  color: #d6d8de;
+  border: 1px solid #ffffff14;
+  border-radius: 11px;
+  background: #ffffff08;
+  cursor: pointer;
+}
+
+.workspace-chip:hover { border-color: #ffffff2a; background: #ffffff0f; }
+.workspace-chip.open { border-color: #7c6cf6; background: rgba(124, 108, 246, 0.16); }
+
+.workspace-chip svg { flex: 0 0 auto; width: 15px; height: 15px; color: #8f93a0; }
+.workspace-chip.open svg { color: #b3a9ff; }
+
+.workspace-name {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-caret { flex: 0 0 auto; font-size: 9px; color: #80838e; }
+
+.workspace-dropdown {
+  position: absolute;
+  top: calc(100% + 9px);
+  left: 50%;
+  z-index: 40;
+  width: min(430px, calc(100vw - 40px));
+  padding: 14px 16px;
+  transform: translateX(-50%);
+  border: 1px solid #ffffff1c;
+  border-radius: 16px;
+  background: rgba(18, 21, 27, 0.97);
+  box-shadow: 0 20px 56px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(18px);
+}
+
+.workspace-dropdown-head {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 4px;
+}
+
+.workspace-dropdown-head b { font-size: 13px; }
+.workspace-dropdown-head small {
+  overflow: hidden;
+  font-size: 11px;
+  color: #8f939c;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+
+@media (max-width: 1180px) {
+  .workspace-chip { max-width: 190px; }
+}
+
+/* 够宽的时候把它放到页面正中。窄屏不这么做：右侧状态区有 800px 上下，
+   绝对居中会压在型号和状态上，重叠比偏移更糟。 */
+@media (min-width: 1600px) {
+  .workspace-switch {
+    position: absolute;
+    left: 50%;
+    flex: 0 0 auto;
+    transform: translateX(-50%);
+  }
+  header:has(.workspace-switch) .backend { margin-left: auto; }
+}

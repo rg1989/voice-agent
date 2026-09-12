@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { t } from './i18n.js'
-import { gatewayFetch } from './gateway-transport.js'
+import FolderPicker from './FolderPicker.jsx'
+import {
+  fetchSettings,
+  saveSettings,
+  waitForGatewayThenReload,
+} from './settings-api.js'
 
 // 设置面板：选后台 Agent、工作目录和音色。
 //
@@ -9,79 +14,6 @@ import { gatewayFetch } from './gateway-transport.js'
 //
 // 目录用服务端列目录 + 点击进入的方式选：浏览器的 <input type="file"> 拿不到
 // 真实路径，那是安全限制。Gateway 本来就跑在本机，列目录比让人手抄路径好得多。
-
-const RESTART_POLL_MS = 500
-const RESTART_TIMEOUT_MS = 45000
-
-function FolderPicker({ initialPath, onPick, onCancel, disabled }) {
-  const [listing, setListing] = useState(null)
-  const [typed, setTyped] = useState(initialPath || '')
-  const [error, setError] = useState('')
-
-  const load = useCallback(async path => {
-    setError('')
-    try {
-      const query = path ? `?path=${encodeURIComponent(path)}` : ''
-      const response = await gatewayFetch(`api/settings/folders${query}`, { cache: 'no-store' })
-      if (!response.ok) throw new Error(String(response.status))
-      const payload = await response.json()
-      setListing(payload)
-      setTyped(payload.path)
-      if (payload.error) setError(payload.error)
-    } catch {
-      setError(t('读不到这个目录'))
-    }
-  }, [])
-
-  useEffect(() => { load(initialPath) }, [load, initialPath])
-
-  return <div className="folder-picker">
-    <form onSubmit={event => { event.preventDefault(); load(typed) }}>
-      <input
-        type="text"
-        value={typed}
-        spellCheck={false}
-        disabled={disabled}
-        aria-label={t('目录路径')}
-        onChange={event => setTyped(event.target.value)}
-      />
-      <button type="submit" disabled={disabled}>{t('前往')}</button>
-    </form>
-
-    {error && <p className="settings-error" role="alert">{error}</p>}
-
-    <div className="folder-list" role="listbox" aria-label={t('子目录')}>
-      {listing?.parent && <button
-        type="button"
-        className="folder-row up"
-        disabled={disabled}
-        onClick={() => load(listing.parent)}
-      >{t('← 返回上一级')}</button>}
-
-      {listing && !listing.entries.length && !listing.error && <p className="settings-hint">
-        {t('这里没有子文件夹。')}
-      </p>}
-
-      {listing?.entries.map(entry => <button
-        key={entry.path}
-        type="button"
-        className="folder-row"
-        disabled={disabled}
-        onClick={() => load(entry.path)}
-      >{entry.name}</button>)}
-    </div>
-
-    <div className="folder-actions">
-      <button
-        type="button"
-        className="primary"
-        disabled={disabled || !listing}
-        onClick={() => onPick(listing.path)}
-      >{t('用这个文件夹')}</button>
-      <button type="button" disabled={disabled} onClick={onCancel}>{t('取消')}</button>
-    </div>
-  </div>
-}
 
 export default function SettingsPanel({ onClose }) {
   const [settings, setSettings] = useState(null)
@@ -92,9 +24,7 @@ export default function SettingsPanel({ onClose }) {
 
   const refresh = useCallback(async () => {
     try {
-      const response = await gatewayFetch('api/settings', { cache: 'no-store' })
-      if (!response.ok) throw new Error(String(response.status))
-      setSettings(await response.json())
+      setSettings(await fetchSettings())
     } catch {
       setError(t('读不到设置'))
     }
@@ -102,41 +32,19 @@ export default function SettingsPanel({ onClose }) {
 
   useEffect(() => { refresh() }, [refresh])
 
-  // Gateway 重启期间 /api/health 会短暂不可达；等它回来再整页刷新，
-  // 这样 WebSocket 会带着新的模型和音色重新握手。
-  const waitForGateway = useCallback(async () => {
-    const deadline = Date.now() + RESTART_TIMEOUT_MS
-    while (Date.now() < deadline) {
-      await new Promise(done => setTimeout(done, RESTART_POLL_MS))
-      try {
-        const response = await gatewayFetch('api/health', { cache: 'no-store' })
-        if (response.ok) {
-          globalThis.location?.reload()
-          return
-        }
-      } catch {
-        // 还没起来，继续等
-      }
-    }
-    setRestarting(false)
-    setError(t('重启超时，请手动刷新页面'))
-  }, [])
-
   const save = useCallback(async patch => {
     if (busy || restarting) return
     setBusy(true)
     setError('')
     try {
-      const response = await gatewayFetch('api/settings', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(patch),
-      })
-      const payload = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(payload.error || String(response.status))
+      const payload = await saveSettings(patch)
       if (payload.restarting) {
         setRestarting(true)
-        waitForGateway()
+        const ok = await waitForGatewayThenReload()
+        if (!ok) {
+          setRestarting(false)
+          setError(t('重启超时，请手动刷新页面'))
+        }
       } else {
         await refresh()
       }
@@ -145,7 +53,7 @@ export default function SettingsPanel({ onClose }) {
     } finally {
       setBusy(false)
     }
-  }, [busy, restarting, refresh, waitForGateway])
+  }, [busy, restarting, refresh])
 
   const disabled = busy || restarting || !settings
 

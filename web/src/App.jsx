@@ -21,6 +21,7 @@ import DesktopFluidOrb from './desktop/DesktopFluidOrb.jsx'
 import DesktopSpriteOrb from './desktop/DesktopSpriteOrb.jsx'
 import KnowledgeLibraryPanel from './KnowledgeLibraryPanel.jsx'
 import SettingsPanel from './SettingsPanel.jsx'
+import WorkspaceSwitcher from './WorkspaceSwitcher.jsx'
 import {
   desktopOrbClassName,
   resolveOrbVisualState,
@@ -1346,6 +1347,7 @@ export default function App() {
   }`}>
     <header>
       <div className="brand"><span>V</span><div>qwen-audio-agent<small>REALTIME VOICE · LIVE</small></div></div>
+      {!desktopOrbMode && <WorkspaceSwitcher />}
       <a
         className="backend"
         href={backend.url || undefined}
