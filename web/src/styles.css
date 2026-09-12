@@ -1836,14 +1836,19 @@ article.user .message-body .inline-code { background: #5e44c9; color: #f0eaff; }
 /* backdrop-filter 在 header 上建了独立层叠上下文，下拉面板的 z-index 只在
    header 内部有效，于是被后面的消息盖住。给 header 本身一个层级即可。 */
 header { position: relative; z-index: 60; }
+
+/* Web 版 header 分三段：左边只留徽标和工作目录，中间是运行状态条，
+   右边是操作按钮。项目名和运行状态是两件随时要瞟一眼的事，
+   把它们分到左、中两个固定位置，比挤成一排更快找得到。 */
+header:has(.workspace-switch) .brand div { display: none; }
 header:has(.workspace-switch) .backend { margin-left: 0; }
+/* 状态条脱离了文档流，右侧按钮组得自己找回右对齐 */
+header:has(.workspace-switch) .runtime-status + * { margin-left: auto; }
 
 .workspace-switch {
   position: relative;
   z-index: 30;
-  flex: 1 1 auto;
-  display: flex;
-  justify-content: center;
+  flex: 0 0 auto;
   min-width: 0;
 }
 
@@ -1913,9 +1918,70 @@ header:has(.workspace-switch) .backend { margin-left: 0; }
   .workspace-chip { max-width: 190px; }
 }
 
-/* 不用媒体查询做「绝对居中」：右侧状态区约 834px 宽，安全阈值还随文件夹名
-   长短浮动（163px 的名字要 1864px 视口，长名字要 2000px 以上）。定死一个断点
-   必然在某些名字下重叠，所以一律走上面那条居中的空档。 */
+/* 运行状态条：后台 / 模型 / 状态三段拼成一枚，用细分隔线断开，
+   绝对居中。左边只剩徽标加目录、右边是四个按钮，中间留得下。 */
+.runtime-status {
+  position: absolute;
+  left: 50%;
+  display: flex;
+  align-items: stretch;
+  max-width: min(560px, calc(100vw - 760px));
+  overflow: hidden;
+  transform: translateX(-50%);
+  border: 1px solid #ffffff14;
+  border-radius: 12px;
+  background: #ffffff08;
+}
+
+.runtime-status > * {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 13px;
+  border-right: 1px solid #ffffff12;
+}
+
+.runtime-status > *:last-child { border-right: 0; }
+.runtime-status .backend { padding-right: 13px; }
+
+.runtime-status .model-status {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  align-items: flex-start;
+  max-width: 250px;
+}
+
+.runtime-status .model-status b {
+  overflow: hidden;
+  font-size: 12px;
+  color: #d6d8de;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.runtime-status .model-status small {
+  overflow: hidden;
+  font-size: 10px;
+  color: #80838e;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.runtime-status .status { white-space: nowrap; }
+
+/* 窄屏放回文档流，别压住两边 */
+@media (max-width: 1280px) {
+  .runtime-status {
+    position: static;
+    max-width: none;
+    margin-left: auto;
+    transform: none;
+  }
+}
 
 /* 滚动条：应用其他地方要么藏起来，要么用系统默认的白条，在深色面板里很跳。
    这几处需要看得见滚动位置，所以给一条低调的暗色滑块。 */

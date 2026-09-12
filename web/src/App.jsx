@@ -1348,27 +1348,31 @@ export default function App() {
     <header>
       <div className="brand"><span>V</span><div>qwen-audio-agent<small>REALTIME VOICE · LIVE</small></div></div>
       {!desktopOrbMode && <WorkspaceSwitcher />}
-      <a
-        className="backend"
-        href={backend.url || undefined}
-        target="_blank"
-        rel="noreferrer"
-        title={backend.url ? t('打开 {label}', { label: backend.label }) : backend.label}
-      >
-        <i className={backend.ready ? 'ready' : ''} />
-        {backend.label}
-      </a>
-      <div
-        className="model-status"
-        title={`${frontend.label}\n${modelStatus.id}`}
-      >
-        <b>{modelLabel}</b>
-        {modelStatus.metadataStatus === 'current'
-          ? <small>{modelInputModeList(modelStatus.modelInputModes)}</small>
-          : <small>{t('模型能力信息不可用')}</small>}
-      </div>
-      <div className="status">
-        <i className={orbVisualState} /><span>{labelFor(orbVisualState)}</span>
+      {/* 后台、模型、状态合成一枚居中的运行状态条：三件事说的都是「现在这套
+          东西活着没有」，分成三块散在 header 里读起来反而费劲。 */}
+      <div className="runtime-status">
+        <a
+          className="backend"
+          href={backend.url || undefined}
+          target="_blank"
+          rel="noreferrer"
+          title={backend.url ? t('打开 {label}', { label: backend.label }) : backend.label}
+        >
+          <i className={backend.ready ? 'ready' : ''} />
+          {backend.label}
+        </a>
+        <div
+          className="model-status"
+          title={`${frontend.label}\n${modelStatus.id}`}
+        >
+          <b>{modelLabel}</b>
+          {modelStatus.metadataStatus === 'current'
+            ? <small>{modelInputModeList(modelStatus.modelInputModes)}</small>
+            : <small>{t('模型能力信息不可用')}</small>}
+        </div>
+        <div className="status">
+          <i className={orbVisualState} /><span>{labelFor(orbVisualState)}</span>
+        </div>
       </div>
       {/* 资料库入口只在 web 模式给：桌面悬浮球的 header 已经紧到把「新会话」
           压成一个「＋」，再塞一个文字按钮会挤掉语音按钮 */}
