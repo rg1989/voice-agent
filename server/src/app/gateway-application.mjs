@@ -21,6 +21,7 @@ import {
   createOpenAiCompatibleTextCall,
 } from '../core/llm/openai-compatible-chat.mjs'
 import { enforceSameOrigin, isAllowedOrigin } from '../core/request-security.mjs'
+import { UsageMeter } from '../usage/usage-meter.mjs'
 import {
   readRuntimeSettings,
   updateRuntimeSettings,
@@ -705,6 +706,11 @@ app.get('/api/settings', (req, res) => {
   res.json(readRuntimeSettings())
 })
 
+app.get('/api/usage', (req, res) => {
+  res.setHeader('cache-control', 'no-store')
+  res.json(usageMeter.snapshot(config.audioModel))
+})
+
 app.get('/api/settings/folders', (req, res) => {
   res.setHeader('cache-control', 'no-store')
   res.json(listFolders(req.query?.path))
@@ -948,7 +954,17 @@ const backendAvailability = new BackendAvailability({
   },
 })
 backendAvailability.refresh()
+// Local spend metering. Realtime reports per-turn token usage, so the app can
+// price its own consumption exactly and instantly. There is no API for the
+// free-quota balance, so the remaining figure is derived and flagged as an
+// estimate; only the 403 from the provider is authoritative about exhaustion.
+const usageMeter = new UsageMeter({
+  filePath: resolve(config.stateDirectory, 'usage.json'),
+  onWarning: warning => logger.warn('usage.store_warning', { error: warning.message }),
+}).load()
+
 realtimeGateway = attachRealtimeGateway(server, {
+  usageMeter,
   identityManager: gatewayAccessRuntime,
   memoryService: frontendMemoryRuntime,
   sessionDigests,

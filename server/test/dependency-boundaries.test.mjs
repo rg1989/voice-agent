@@ -23,9 +23,14 @@ const allowedDependencies = {
     'session',
     'task',
     'transport',
+    'usage',
     'voice',
   ]),
   access: new Set(['access', 'core', 'shared']),
+  // Local spend metering: counters and a price table over a snapshot store.
+  // It depends on nothing but core persistence, and nothing depends on it
+  // except the composition root and the voice transport that feeds it.
+  usage: new Set(['core', 'shared', 'usage']),
   process: new Set(['process', 'shared']),
   core: new Set(['core', 'shared']),
   frontend: new Set([

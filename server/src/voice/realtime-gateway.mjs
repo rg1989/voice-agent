@@ -177,7 +177,15 @@ function clientDescriptor(event = {}) {
   }
 }
 
+// Which model the spend is attributed to. The provider knows, but fall back to
+// configuration rather than dropping the record: an unattributed turn is spend
+// that silently vanishes from the meter.
+function meteredModel(session) {
+  return String(session?.provider?.()?.model?.() || '').trim() || defaultConfig.audioModel
+}
+
 export function attachRealtimeGateway(server, {
+  usageMeter = null,
   identityManager,
   memoryService,
   sessionObservers = [],
@@ -1082,6 +1090,17 @@ export function attachRealtimeGateway(server, {
     })
 
     const handleEvent = event => {
+      if (event.type === 'response.done') {
+        usageMeter?.record(event, meteredModel(realtimeSession))
+      }
+      // The only authoritative live signal about the free quota: with "Free
+      // Quota Only" enabled the provider refuses once it is spent. The balance
+      // itself has no API, so this error is what the UI can actually trust.
+      if (event.type === 'error' && /FreeTierOnly|AllocationQuota/i.test(
+        `${event.error?.code || ''} ${event.error?.message || ''}`,
+      )) {
+        usageMeter?.markQuotaExhausted(meteredModel(realtimeSession))
+      }
       if (isSleepActivityEvent(event)) sleepController?.recordActivity()
       if (isResponseActivityEvent(event)) presentationRuntime.begin(event)
       if (inputs.handleProviderEvent(event)) return
@@ -1389,6 +1408,10 @@ export function attachRealtimeGateway(server, {
               responseId,
             })
             return
+          }
+          // An audition is real spend, so it is metered like any other turn.
+          if (event.type === 'response.done') {
+            usageMeter?.record(event, meteredModel(voiceSampleSession))
           }
           if (event.type === 'response.done' || event.type === 'error') finish()
         },

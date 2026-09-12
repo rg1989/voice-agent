@@ -22,6 +22,7 @@ import DesktopSpriteOrb from './desktop/DesktopSpriteOrb.jsx'
 import KnowledgeLibraryPanel from './KnowledgeLibraryPanel.jsx'
 import SettingsPanel from './SettingsPanel.jsx'
 import WorkspaceSwitcher from './WorkspaceSwitcher.jsx'
+import SpendReadout from './SpendReadout.jsx'
 import {
   desktopOrbClassName,
   resolveOrbVisualState,
@@ -165,6 +166,18 @@ function OrbControlIcon({ type, muted = false, collapsed = false }) {
     return <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M5 5.5h14v10H9l-4 3v-13Z" />
       <path d="M8 9h8m-8 3h5" />
+    </svg>
+  }
+  if (type === 'library') {
+    return <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 4.5h6a2 2 0 0 1 2 2v13a2 2 0 0 0-2-2H4v-13Z" />
+      <path d="M20 4.5h-6a2 2 0 0 0-2 2v13a2 2 0 0 1 2-2h6v-13Z" />
+    </svg>
+  }
+  if (type === 'new-session') {
+    return <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M5 5.5h14v10H9l-4 3v-13Z" />
+      <path d="M12 8v5m-2.5-2.5h5" />
     </svg>
   }
   if (type === 'collapse') {
@@ -1373,47 +1386,49 @@ export default function App() {
         <div className="status">
           <i className={orbVisualState} /><span>{labelFor(orbVisualState)}</span>
         </div>
+        {!desktopOrbMode && <SpendReadout />}
       </div>
       {/* 资料库入口只在 web 模式给：桌面悬浮球的 header 已经紧到把「新会话」
           压成一个「＋」，再塞一个文字按钮会挤掉语音按钮 */}
       {!desktopOrbMode && (
         <button
-          className={`ghost${showKnowledgeLibrary ? ' active' : ''}`}
+          className={`header-action${showKnowledgeLibrary ? ' active' : ''}`}
           onClick={() => setShowKnowledgeLibrary(value => !value)}
+          aria-label={t('资料库')}
           title={t('把本机的手册、规章、教材交给助手')}
         >
-          {t('资料库')}
+          <OrbControlIcon type="library" />
         </button>
       )}
       {!desktopOrbMode && (
         <button
-          className={`ghost${showSettings ? ' active' : ''}`}
+          className={`header-action${showSettings ? ' active' : ''}`}
           onClick={() => setShowSettings(value => !value)}
+          aria-label={t('设置')}
           title={t('选后台 Agent、工作目录和音色')}
         >
-          {t('设置')}
+          <OrbControlIcon type="settings" />
         </button>
       )}
       <button
-        className={`ghost${desktopOrbMode ? ' desktop-new-session' : ''}`}
+        className={desktopOrbMode ? 'ghost desktop-new-session' : 'header-action'}
         onClick={resetSession}
         aria-label={t('新会话')}
-        title={desktopOrbMode ? t('新会话') : undefined}
-      >{desktopOrbMode ? '＋' : t('新会话')}</button>
+        title={t('新会话')}
+      >{desktopOrbMode ? '＋' : <OrbControlIcon type="new-session" />}</button>
       <button
         className={[
           'voice',
+          desktopOrbMode ? '' : 'header-action',
           voiceEnabled ? 'active' : '',
           waitingForVoice ? 'waiting' : '',
         ].filter(Boolean).join(' ')}
         aria-label={voiceEnabled
           ? t('麦克风静音')
           : waitingForVoice ? t('取消等待') : t('开启麦克风')}
-        title={compactVoiceControl
-          ? voiceEnabled
-            ? t('麦克风静音')
-            : waitingForVoice ? t('取消等待') : t('开启麦克风')
-          : undefined}
+        title={voiceEnabled
+          ? t('麦克风静音')
+          : waitingForVoice ? t('取消等待') : t('开启麦克风')}
         onClick={() => {
           if (voiceEnabled || waitingForVoice) {
             disableVoice()
@@ -1422,11 +1437,7 @@ export default function App() {
           enableVoice()
         }}
       >
-        {compactVoiceControl
-          ? <OrbControlIcon type="microphone" muted={!voiceEnabled} />
-          : voiceEnabled
-            ? t('麦克风静音')
-            : waitingForVoice ? t('取消等待') : t('开启麦克风')}
+        <OrbControlIcon type="microphone" muted={!voiceEnabled} />
       </button>
       {desktopOrbMode && <button
         className="ghost desktop-panel-collapse"

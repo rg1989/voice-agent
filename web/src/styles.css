@@ -2082,3 +2082,74 @@ header:has(.workspace-switch) .runtime-status + * { margin-left: auto; }
 .settings-toggle b { font-size: 13px; font-weight: 600; }
 .settings-toggle small { font-size: 11px; line-height: 1.5; color: #9a9ea7; }
 .settings-toggle:has(input:disabled) { opacity: 0.5; cursor: default; }
+
+/* Header 右侧操作：图标按钮。文字长度不一会让 header 高度和节奏都乱，
+   统一成等宽的图标格子，语义交给 aria-label 和 title。 */
+.header-action {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  flex: 0 0 auto;
+  color: #a9adb8;
+  border: 1px solid #ffffff14;
+  border-radius: 10px;
+  background: #ffffff08;
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.header-action:hover:not(:disabled) {
+  color: #f5f5f7;
+  border-color: #ffffff2e;
+  background: #ffffff12;
+}
+
+.header-action.active {
+  color: #cdc4ff;
+  border-color: #7c6cf6;
+  background: rgba(124, 108, 246, 0.18);
+}
+
+.header-action svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* 麦克风是这排里最重要的一个，开启时给它实心的强调色 */
+.header-action.voice.active {
+  color: #fff;
+  border-color: transparent;
+  background: linear-gradient(145deg, #8d76ff, #6343e5);
+}
+
+.header-action.voice.waiting {
+  color: #ffd9a3;
+  border-color: #ffb35c55;
+  background: rgba(255, 179, 92, 0.14);
+}
+
+/* 花费读数：运行状态条里的第四段 */
+.runtime-status .spend {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  align-items: flex-start;
+  white-space: nowrap;
+}
+
+.runtime-status .spend b {
+  font-size: 12px;
+  color: #d6d8de;
+  font-variant-numeric: tabular-nums;
+}
+
+.runtime-status .spend small { font-size: 10px; color: #80838e; }
+.runtime-status .spend.exhausted b { color: #f0928c; }
+.runtime-status .spend.exhausted small { color: #f0928c; }

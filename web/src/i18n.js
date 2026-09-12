@@ -1,4 +1,10 @@
 const translations = {
+  '这一场：{tokens} tokens，约 {cost}': 'This session: {tokens} tokens, about {cost}',
+  '今天：{tokens} tokens，约 {cost}': 'Today: {tokens} tokens, about {cost}',
+  '免费额度已用完（服务商已拒绝请求）': 'Free quota is used up (the provider refused a request)',
+  '免费额度剩余约 {remaining}（估算，官方没有可查询的接口）': 'About {remaining} of free quota left (estimated: there is no API for the real balance)',
+  '额度已用完': 'quota spent',
+  '额度 {percent}%': '{percent}% quota',
   '隐私': 'Privacy',
   '只把一句话摘要发给语音模型': 'Send only a one-line summary to the voice model',
   '后台 Agent 的完整回复默认会发给语音服务商，好让它念出来。开启后只转发后台自己写的 VOICE: 那一行；没写就只说一句：完成了，结果在屏幕上。': 'By default the agent full reply is sent to the voice provider so it can read it out. With this on, only the VOICE: line the agent wrote is forwarded, and if it wrote none, just: Done. The full result is on screen.',
