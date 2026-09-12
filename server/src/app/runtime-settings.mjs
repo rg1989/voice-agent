@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { readFileSync, writeFileSync, chmodSync, existsSync, statSync } from 'node:fs'
+import { readFileSync, writeFileSync, chmodSync, existsSync, statSync, readdirSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { config } from '../core/config.mjs'
@@ -176,4 +176,55 @@ export function scheduleRestart({ delayMs = 250 } = {}) {
   })
   child.unref()
   return { restarting: true, delayMs }
+}
+
+// Folder picker. A browser cannot hand back a real path from <input type=file>
+// — that is a security boundary, not an oversight — so the Gateway lists
+// directories and the UI walks them. Same-origin and local identity already
+// gate this route, and the backend agent can read the disk anyway.
+const FOLDER_PAGE = 500
+
+function homeDirectory() {
+  return process.env.HOME || '/'
+}
+
+export function listFolders(requested = '') {
+  const raw = String(requested || '').trim()
+  const start = raw
+    ? resolve(raw.replace(/^~(?=\/|$)/, homeDirectory()))
+    : (readRuntimeSettings().folder || homeDirectory())
+  const path = existsSync(start) && statSync(start).isDirectory()
+    ? start
+    : homeDirectory()
+
+  let entries = []
+  let error = ''
+  try {
+    entries = readdirSync(path, { withFileTypes: true })
+      .filter(entry => !entry.name.startsWith('.'))
+      .filter(entry => {
+        if (entry.isDirectory()) return true
+        // follow symlinked project dirs, which are common under ~/code
+        if (!entry.isSymbolicLink()) return false
+        try {
+          return statSync(resolve(path, entry.name)).isDirectory()
+        } catch {
+          return false
+        }
+      })
+      .map(entry => ({ name: entry.name, path: resolve(path, entry.name) }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .slice(0, FOLDER_PAGE)
+  } catch (caught) {
+    error = caught.code === 'EACCES' ? 'permission denied' : caught.message
+  }
+
+  const parent = resolve(path, '..')
+  return {
+    path,
+    parent: parent === path ? '' : parent,
+    home: homeDirectory(),
+    entries,
+    ...(error ? { error } : {}),
+  }
 }

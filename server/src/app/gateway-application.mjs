@@ -25,6 +25,7 @@ import {
   readRuntimeSettings,
   updateRuntimeSettings,
   scheduleRestart,
+  listFolders,
 } from './runtime-settings.mjs'
 import {
   GatewayAccessManager,
@@ -702,6 +703,11 @@ app.get('/api/input', (req, res) => {
 app.get('/api/settings', (req, res) => {
   res.setHeader('cache-control', 'no-store')
   res.json(readRuntimeSettings())
+})
+
+app.get('/api/settings/folders', (req, res) => {
+  res.setHeader('cache-control', 'no-store')
+  res.json(listFolders(req.query?.path))
 })
 
 app.post('/api/settings', (req, res) => {

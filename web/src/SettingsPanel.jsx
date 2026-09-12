@@ -7,15 +7,85 @@ import { gatewayFetch } from './gateway-transport.js'
 // 这三项都在 Gateway 启动时读入，所以改完要重启。重启由服务端的分离子进程完成，
 // 这里只负责等 /api/health 重新应答，然后刷新页面重新握手。
 //
-// 目录同样是「填一条本机路径」而不是文件选择器：浏览器的 <input type="file">
-// 拿不到真实路径，这是安全限制，不是偷懒。
+// 目录用服务端列目录 + 点击进入的方式选：浏览器的 <input type="file"> 拿不到
+// 真实路径，那是安全限制。Gateway 本来就跑在本机，列目录比让人手抄路径好得多。
 
 const RESTART_POLL_MS = 500
 const RESTART_TIMEOUT_MS = 45000
 
+function FolderPicker({ initialPath, onPick, onCancel, disabled }) {
+  const [listing, setListing] = useState(null)
+  const [typed, setTyped] = useState(initialPath || '')
+  const [error, setError] = useState('')
+
+  const load = useCallback(async path => {
+    setError('')
+    try {
+      const query = path ? `?path=${encodeURIComponent(path)}` : ''
+      const response = await gatewayFetch(`api/settings/folders${query}`, { cache: 'no-store' })
+      if (!response.ok) throw new Error(String(response.status))
+      const payload = await response.json()
+      setListing(payload)
+      setTyped(payload.path)
+      if (payload.error) setError(payload.error)
+    } catch {
+      setError(t('读不到这个目录'))
+    }
+  }, [])
+
+  useEffect(() => { load(initialPath) }, [load, initialPath])
+
+  return <div className="folder-picker">
+    <form onSubmit={event => { event.preventDefault(); load(typed) }}>
+      <input
+        type="text"
+        value={typed}
+        spellCheck={false}
+        disabled={disabled}
+        aria-label={t('目录路径')}
+        onChange={event => setTyped(event.target.value)}
+      />
+      <button type="submit" disabled={disabled}>{t('前往')}</button>
+    </form>
+
+    {error && <p className="settings-error" role="alert">{error}</p>}
+
+    <div className="folder-list" role="listbox" aria-label={t('子目录')}>
+      {listing?.parent && <button
+        type="button"
+        className="folder-row up"
+        disabled={disabled}
+        onClick={() => load(listing.parent)}
+      >{t('← 返回上一级')}</button>}
+
+      {listing && !listing.entries.length && !listing.error && <p className="settings-hint">
+        {t('这里没有子文件夹。')}
+      </p>}
+
+      {listing?.entries.map(entry => <button
+        key={entry.path}
+        type="button"
+        className="folder-row"
+        disabled={disabled}
+        onClick={() => load(entry.path)}
+      >{entry.name}</button>)}
+    </div>
+
+    <div className="folder-actions">
+      <button
+        type="button"
+        className="primary"
+        disabled={disabled || !listing}
+        onClick={() => onPick(listing.path)}
+      >{t('用这个文件夹')}</button>
+      <button type="button" disabled={disabled} onClick={onCancel}>{t('取消')}</button>
+    </div>
+  </div>
+}
+
 export default function SettingsPanel({ onClose }) {
   const [settings, setSettings] = useState(null)
-  const [folder, setFolder] = useState('')
+  const [browsing, setBrowsing] = useState(false)
   const [busy, setBusy] = useState(false)
   const [restarting, setRestarting] = useState(false)
   const [error, setError] = useState('')
@@ -24,9 +94,7 @@ export default function SettingsPanel({ onClose }) {
     try {
       const response = await gatewayFetch('api/settings', { cache: 'no-store' })
       if (!response.ok) throw new Error(String(response.status))
-      const payload = await response.json()
-      setSettings(payload)
-      setFolder(payload.folder || '')
+      setSettings(await response.json())
     } catch {
       setError(t('读不到设置'))
     }
@@ -114,20 +182,20 @@ export default function SettingsPanel({ onClose }) {
 
         <section className="settings-group">
           <h4>{t('工作目录')}</h4>
-          <p className="settings-hint">{t('后台 Agent 在哪个文件夹里干活。留空则用默认的暂存目录。')}</p>
-          <form onSubmit={event => { event.preventDefault(); save({ folder }) }}>
-            <input
-              type="text"
-              value={folder}
-              spellCheck={false}
+          <p className="settings-hint">{t('后台 Agent 在哪个文件夹里干活，也就是它看得到的上下文。')}</p>
+          {browsing
+            ? <FolderPicker
+              initialPath={settings.folder}
               disabled={disabled}
-              placeholder={t('粘贴本机文件夹路径，例如 ~/Documents/Projects/my-app')}
-              onChange={event => setFolder(event.target.value)}
+              onCancel={() => setBrowsing(false)}
+              onPick={path => { setBrowsing(false); save({ folder: path }) }}
             />
-            <button type="submit" disabled={disabled || folder === (settings.folder || '')}>
-              {t('应用')}
-            </button>
-          </form>
+            : <div className="folder-current">
+              <code>{settings.folder || t('默认暂存目录')}</code>
+              <button type="button" disabled={disabled} onClick={() => setBrowsing(true)}>
+                {t('选择文件夹')}
+              </button>
+            </div>}
         </section>
 
         <section className="settings-group">

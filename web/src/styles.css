@@ -1727,3 +1727,105 @@ article.user .message-body .inline-code { background: #5e44c9; color: #f0eaff; }
 @media (prefers-reduced-motion: reduce) {
   .settings-option { transition: none; }
 }
+
+/* 目录选择器：服务端列目录，点进去走 */
+.folder-current {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.folder-current code {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 8px 10px;
+  overflow: hidden;
+  font-size: 12px;
+  color: #cfd2d8;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 1px solid #ffffff12;
+  border-radius: 10px;
+  background: #ffffff06;
+}
+
+.folder-current button,
+.folder-actions button {
+  padding: 8px 12px;
+  color: #ddd;
+  border: 1px solid #ffffff18;
+  border-radius: 10px;
+  background: #ffffff08;
+  white-space: nowrap;
+}
+
+.folder-current button:disabled,
+.folder-actions button:disabled { opacity: 0.45; }
+
+.folder-picker { margin-top: 10px; }
+.folder-picker form { display: flex; gap: 8px; }
+
+.folder-picker input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 8px 10px;
+  color: #f5f5f7;
+  border: 1px solid #ffffff1e;
+  border-radius: 10px;
+  background: #ffffff08;
+  font: inherit;
+  font-size: 12px;
+}
+
+.folder-picker form button {
+  padding: 8px 12px;
+  color: #ddd;
+  border: 1px solid #ffffff18;
+  border-radius: 10px;
+  background: #ffffff08;
+}
+
+.folder-list {
+  max-height: 190px;
+  margin-top: 8px;
+  overflow-y: auto;
+  border: 1px solid #ffffff12;
+  border-radius: 12px;
+  background: #ffffff04;
+}
+
+.folder-row {
+  display: block;
+  width: 100%;
+  padding: 7px 12px;
+  overflow: hidden;
+  font-size: 13px;
+  color: #e6e7ea;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 0;
+  border-bottom: 1px solid #ffffff08;
+  background: none;
+  cursor: pointer;
+}
+
+.folder-row:last-child { border-bottom: 0; }
+.folder-row:hover:not(:disabled) { background: #ffffff0d; }
+.folder-row.up { color: #9a9ea7; }
+.folder-row:disabled { opacity: 0.45; cursor: default; }
+
+.folder-list .settings-hint { margin: 0; padding: 10px 12px; }
+
+.folder-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.folder-actions .primary {
+  color: #fff;
+  border-color: #7c6cf6;
+  background: rgba(124, 108, 246, 0.28);
+}
