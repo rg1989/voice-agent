@@ -1,31 +1,71 @@
 #!/bin/bash
+# Restart the Gateway. Called by bin/brain, bin/folder, bin/voice and by the
+# Settings API, so it must be safe to run from inside the process it replaces.
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-# stop any running gateway and wait for the port to actually free
-pkill -f 'qwenaudio.mjs' 2>/dev/null || true
-for i in $(seq 1 60); do
-  pgrep -f 'qwenaudio.mjs' >/dev/null 2>&1 || break
-  sleep 0.25
-done
-pkill -9 -f 'qwenaudio.mjs' 2>/dev/null || true
-for i in $(seq 1 40); do
+LOG="$REPO/.run/gateway.log"
+PIDFILE="$REPO/.run/gateway.pid"
+mkdir -p "$REPO/.run"
+
+# Kill by recorded pid, not `pkill -f`: a pattern match also hits any shell
+# whose command line happens to mention the script, which is an easy way to
+# take down the terminal that called this.
+# Kill whatever actually holds the port. `pkill -f` also matches any shell
+# whose command line mentions the script (easy way to kill the caller), and
+# the pid recorded at spawn time is not always the node process that ends up
+# listening -- both produced "restarts" that silently left the old Gateway up
+# while the replacement refused to start.
+stop_gateway () {
+  local pid
+  pid="$(lsof -nP -iTCP:3101 -sTCP:LISTEN -t 2>/dev/null | head -1)"
+  if [ -z "$pid" ] && [ -f "$PIDFILE" ]; then pid="$(cat "$PIDFILE" 2>/dev/null)"; fi
+  [ -z "$pid" ] && return 0
+  kill -0 "$pid" 2>/dev/null || return 0
+
+  # Give it real time to release its instance lease. A SIGKILL leaves a stale
+  # lease and the replacement refuses to start with "parameters do not match".
+  kill "$pid" 2>/dev/null
+  for _ in $(seq 1 80); do
+    kill -0 "$pid" 2>/dev/null || return 0
+    sleep 0.25
+  done
+  echo "gateway $pid did not exit in 20s; forcing" >> "$LOG"
+  kill -9 "$pid" 2>/dev/null
+  sleep 2
+}
+
+stop_gateway
+rm -f "$PIDFILE"
+for _ in $(seq 1 40); do
   lsof -nP -iTCP:3101 -sTCP:LISTEN >/dev/null 2>&1 || break
   sleep 0.25
 done
-mkdir -p "$REPO/.run"
+
 cd "$REPO"
-nohup node cli/bin/qwenaudio.mjs > "$REPO/.run/gateway.log" 2>&1 &
+# append, never truncate: a failed start used to erase its own evidence
+nohup node cli/bin/qwenaudio.mjs >> "$LOG" 2>&1 &
 disown 2>/dev/null || true
-for i in $(seq 1 400); do
-  curl -s -m 1 http://127.0.0.1:3101/api/health 2>/dev/null | grep -q '"ok"' && break
+
+up=0
+for _ in $(seq 1 400); do
+  if curl -s -m 1 http://127.0.0.1:3101/api/health 2>/dev/null | grep -q '"ok"'; then up=1; break; fi
   sleep 0.2
 done
-sleep 2
+
+lsof -nP -iTCP:3101 -sTCP:LISTEN -t 2>/dev/null | head -1 > "$PIDFILE"
+
+if [ "$up" != 1 ]; then
+  echo "  gateway FAILED to start. Last log lines:"
+  tail -5 "$LOG"
+  exit 1
+fi
+
+sleep 1
 curl -s -m 3 http://127.0.0.1:3101/api/health 2>/dev/null | python3 -c "
 import json,sys
 d=json.load(sys.stdin); b=d.get('backend') or {}
 print('  gateway :', d.get('status'))
 print('  brain   :', b.get('label'), '-', b.get('status'))
 print('  folder  :', b.get('directory'))
-print('  voice   :', d.get('realtimeModel'))
-" 2>/dev/null || { echo "  gateway did not come up:"; tail -4 "$REPO/.run/gateway.log"; }
+print('  model   :', d.get('realtimeModel'))
+" 2>/dev/null
 echo "  Reload the page in your browser."

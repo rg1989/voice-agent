@@ -158,6 +158,27 @@ export function updateRuntimeSettings(patch = {}) {
   return { changed }
 }
 
+// Everything the settings API writes to config.env. The replacement Gateway
+// must read these from the file, so they are stripped from the env it
+// inherits: loadRuntimeEnvironment only fills a key when it is undefined
+// (shared/runtime-environment.mjs), so an inherited value silently wins over
+// the file and the setting appears to change but never takes effect.
+const MANAGED_ENV_KEYS = Object.freeze([
+  CONFIG_KEYS.brain,
+  CONFIG_KEYS.folder,
+  CONFIG_KEYS.voice,
+  CONFIG_KEYS.audioVoice,
+  'ACP_COMMAND',
+  'ACP_ARGS',
+  'ACP_LABEL',
+])
+
+function restartEnvironment() {
+  const env = { ...process.env }
+  for (const key of MANAGED_ENV_KEYS) delete env[key]
+  return env
+}
+
 // The Gateway holds a single-instance lease, so it cannot restart itself in
 // place. A detached helper outlives this process, waits for the lease to clear,
 // and starts the replacement.
@@ -172,7 +193,7 @@ export function scheduleRestart({ delayMs = 250 } = {}) {
     cwd: repoRoot,
     detached: true,
     stdio: 'ignore',
-    env: { ...process.env },
+    env: restartEnvironment(),
   })
   child.unref()
   return { restarting: true, delayMs }
