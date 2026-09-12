@@ -1,0 +1,19 @@
+#!/bin/bash
+# Pick the folder the agent works in. Usage: bin/folder [/path/to/project]
+set -e
+CFG="$HOME/.config/qwaudio/config.env"
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
+current=$(grep '^QWAUDIO_WORKSPACE=' "$CFG" 2>/dev/null | tail -1 | cut -d= -f2-)
+
+if [ -z "$1" ]; then
+  echo "Current folder: ${current:-$HOME/.config/qwaudio/data/workspace (default scratch dir)}"
+  echo
+  echo "Usage: bin/folder ~/Documents/Projects/my-app"
+  exit 0
+fi
+DIR="$(cd "$1" 2>/dev/null && pwd)" || { echo "No such folder: $1"; exit 1; }
+grep -v '^QWAUDIO_WORKSPACE=' "$CFG" > "$CFG.tmp" 2>/dev/null || true
+echo "QWAUDIO_WORKSPACE=$DIR" >> "$CFG.tmp"
+mv "$CFG.tmp" "$CFG"; chmod 600 "$CFG"
+echo "Working folder set to $DIR. Restarting gateway..."
+exec "$REPO/bin/restart"

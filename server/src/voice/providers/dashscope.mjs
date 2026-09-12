@@ -83,12 +83,15 @@ export const dashscopeProvider = {
     if (profile.modelCapabilities.functionCalling) {
       session.tools = frontendTools(agentContext)
     }
+    // ponytail: the voice has to ride EVERY session.update, not just the
+    // first. DashScope resets the output voice when an update omits it, which
+    // made the assistant change voice partway through a conversation.
+    if (profile.modelCapabilities.audioOutput) {
+      session.voice = sessionVoice || dashscopeProvider.voice()
+      session.output_audio_format = 'pcm'
+    }
     if (!configured) {
       session.modalities = responseModalities(profile)
-      if (profile.modelCapabilities.audioOutput) {
-        session.voice = sessionVoice || dashscopeProvider.voice()
-        session.output_audio_format = 'pcm'
-      }
       if (profile.transportCapabilities.audioInput) {
         session.input_audio_format = 'pcm'
       }

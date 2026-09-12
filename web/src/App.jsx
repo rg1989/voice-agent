@@ -20,6 +20,7 @@ import PermissionActions from './PermissionActions.jsx'
 import DesktopFluidOrb from './desktop/DesktopFluidOrb.jsx'
 import DesktopSpriteOrb from './desktop/DesktopSpriteOrb.jsx'
 import KnowledgeLibraryPanel from './KnowledgeLibraryPanel.jsx'
+import SettingsPanel from './SettingsPanel.jsx'
 import {
   desktopOrbClassName,
   resolveOrbVisualState,
@@ -222,6 +223,7 @@ export default function App() {
   const [agentTasks, setAgentTasks] = useState([])
   const [desktopTasksCollapsed, setDesktopTasksCollapsed] = useState(false)
   const [showKnowledgeLibrary, setShowKnowledgeLibrary] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   const [desktopTaskLayout, setDesktopTaskLayout] = useState({
     placement: 'below',
     orbOffsetX: 0,
@@ -1377,6 +1379,15 @@ export default function App() {
           {t('资料库')}
         </button>
       )}
+      {!desktopOrbMode && (
+        <button
+          className={`ghost${showSettings ? ' active' : ''}`}
+          onClick={() => setShowSettings(value => !value)}
+          title={t('选后台 Agent、工作目录和音色')}
+        >
+          {t('设置')}
+        </button>
+      )}
       <button
         className={`ghost${desktopOrbMode ? ' desktop-new-session' : ''}`}
         onClick={resetSession}
@@ -1425,6 +1436,7 @@ export default function App() {
         onClose={() => setShowKnowledgeLibrary(false)}
         getTask={voice.getTask}
       />}
+      {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
       <div className="hero">
         <button
           className={`orb ${orbVisualState}`}

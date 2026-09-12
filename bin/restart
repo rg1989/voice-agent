@@ -1,0 +1,31 @@
+#!/bin/bash
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
+# stop any running gateway and wait for the port to actually free
+pkill -f 'qwenaudio.mjs' 2>/dev/null || true
+for i in $(seq 1 60); do
+  pgrep -f 'qwenaudio.mjs' >/dev/null 2>&1 || break
+  sleep 0.25
+done
+pkill -9 -f 'qwenaudio.mjs' 2>/dev/null || true
+for i in $(seq 1 40); do
+  lsof -nP -iTCP:3101 -sTCP:LISTEN >/dev/null 2>&1 || break
+  sleep 0.25
+done
+mkdir -p "$REPO/.run"
+cd "$REPO"
+nohup node cli/bin/qwenaudio.mjs > "$REPO/.run/gateway.log" 2>&1 &
+disown 2>/dev/null || true
+for i in $(seq 1 400); do
+  curl -s -m 1 http://127.0.0.1:3101/api/health 2>/dev/null | grep -q '"ok"' && break
+  sleep 0.2
+done
+sleep 2
+curl -s -m 3 http://127.0.0.1:3101/api/health 2>/dev/null | python3 -c "
+import json,sys
+d=json.load(sys.stdin); b=d.get('backend') or {}
+print('  gateway :', d.get('status'))
+print('  brain   :', b.get('label'), '-', b.get('status'))
+print('  folder  :', b.get('directory'))
+print('  voice   :', d.get('realtimeModel'))
+" 2>/dev/null || { echo "  gateway did not come up:"; tail -4 "$REPO/.run/gateway.log"; }
+echo "  Reload the page in your browser."

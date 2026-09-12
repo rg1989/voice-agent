@@ -1611,3 +1611,119 @@ article.user .message-body .inline-code { background: #5e44c9; color: #f0eaff; }
     transition: none;
   }
 }
+
+/* 设置面板：沿用资料库面板的外壳，内部换成分组 + 可选项卡片 */
+.settings-panel {
+  flex: 0 0 auto;
+  max-height: 60dvh;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  overflow-y: auto;
+  border: 1px solid #ffffff16;
+  border-radius: 16px;
+  background: rgba(18, 21, 27, 0.86);
+}
+
+.settings-panel > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0;
+  margin-bottom: 10px;
+  border: 0;
+  background: none;
+}
+
+.settings-panel > header button {
+  padding: 2px 8px;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.settings-group { margin-top: 16px; }
+.settings-group:first-of-type { margin-top: 4px; }
+
+.settings-group h4 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8f939c;
+}
+
+.settings-hint, .settings-error, .settings-notice {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #8f939c;
+}
+
+.settings-error { color: #f0928c; }
+.settings-notice { color: #8de5c6; }
+.settings-footnote { margin-top: 16px; color: #6d727c; }
+
+.settings-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(178px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.settings-option {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+  text-align: left;
+  color: #f5f5f7;
+  border: 1px solid #ffffff12;
+  border-radius: 12px;
+  background: #ffffff06;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.settings-option:hover:not(:disabled) {
+  border-color: #ffffff2a;
+  background: #ffffff0d;
+}
+
+.settings-option.selected {
+  border-color: #7c6cf6;
+  background: rgba(124, 108, 246, 0.14);
+}
+
+.settings-option b { font-size: 13px; font-weight: 600; }
+.settings-option small { font-size: 11px; line-height: 1.45; color: #9a9ea7; }
+.settings-option.selected small { color: #b9b4ea; }
+.settings-option:disabled { opacity: 0.45; cursor: default; }
+
+.settings-group form { display: flex; gap: 8px; margin-top: 10px; }
+
+.settings-group input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 8px 10px;
+  color: #f5f5f7;
+  border: 1px solid #ffffff1e;
+  border-radius: 10px;
+  background: #ffffff08;
+  font: inherit;
+  font-size: 13px;
+}
+
+.settings-group form button {
+  padding: 8px 12px;
+  color: #ddd;
+  border: 1px solid #ffffff18;
+  border-radius: 10px;
+  background: #ffffff08;
+  white-space: nowrap;
+}
+
+.settings-group form button:disabled { opacity: 0.45; }
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-option { transition: none; }
+}

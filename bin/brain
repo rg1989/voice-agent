@@ -1,0 +1,41 @@
+#!/bin/bash
+# Pick which agent does the real work. Usage: bin/brain [claude|codex|omp|none]
+set -e
+CFG="$HOME/.config/qwaudio/config.env"
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
+
+set_kv () { grep -v "^$1=" "$CFG" > "$CFG.tmp" 2>/dev/null || true; echo "$1=$2" >> "$CFG.tmp"; mv "$CFG.tmp" "$CFG"; }
+del_k  () { grep -v "^$1=" "$CFG" > "$CFG.tmp" 2>/dev/null || true; mv "$CFG.tmp" "$CFG"; }
+
+current=$(grep '^AGENT_PROTOCOL=' "$CFG" 2>/dev/null | tail -1 | cut -d= -f2)
+label=$(grep '^ACP_LABEL=' "$CFG" 2>/dev/null | tail -1 | cut -d= -f2-)
+
+if [ -z "$1" ]; then
+  echo "Current brain: ${current:-none}${label:+ ($label)}"
+  echo
+  echo "  claude   Claude Code      — uses your ~/.claude login"
+  echo "  codex    Codex            — uses your Codex login"
+  echo "  omp      Oh My Pi         — uses your ~/.omp provider + model config"
+  echo "  none     no backend       — voice chat only"
+  echo
+  echo "Usage: bin/brain omp"
+  exit 0
+fi
+
+case "$1" in
+  claude) set_kv AGENT_PROTOCOL claude; del_k ACP_COMMAND; del_k ACP_ARGS; del_k ACP_LABEL ;;
+  codex)  set_kv AGENT_PROTOCOL codex;  del_k ACP_COMMAND; del_k ACP_ARGS; del_k ACP_LABEL ;;
+  none)   set_kv AGENT_PROTOCOL none;   del_k ACP_COMMAND; del_k ACP_ARGS; del_k ACP_LABEL ;;
+  omp)
+    OMP_BIN="$(command -v omp || echo "$HOME/.bun/bin/omp")"
+    [ -x "$OMP_BIN" ] || { echo "omp not found"; exit 1; }
+    set_kv AGENT_PROTOCOL acp
+    set_kv ACP_COMMAND "$OMP_BIN"
+    set_kv ACP_ARGS '["acp"]'
+    set_kv ACP_LABEL "Oh My Pi"
+    ;;
+  *) echo "Unknown brain '$1'. Run 'bin/brain' to see the options."; exit 1 ;;
+esac
+chmod 600 "$CFG"
+echo "Brain set to $1. Restarting gateway..."
+exec "$REPO/bin/restart"

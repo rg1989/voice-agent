@@ -1,0 +1,59 @@
+#!/bin/bash
+# Pick the assistant's voice. Usage: bin/voice [name]   (no name = list them)
+set -e
+CFG="$HOME/.config/qwaudio/config.env"
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
+
+declare -a NAMES=(Jennifer Aiden Ryan Mione Tina Andre Cindy Lenn)
+declare -a DESCS=(
+  "Female · American English"
+  "Male · American English"
+  "Male · American English (dramatic)"
+  "Female · British English"
+  "Female · multilingual (model default)"
+  "Male · neutral multilingual"
+  "Female · Taiwanese-accented English"
+  "Male · German-accented English"
+)
+
+current=$(grep '^QWEN_OMNI_REALTIME_VOICE=' "$CFG" 2>/dev/null | tail -1 | cut -d= -f2)
+
+if [ -z "$1" ]; then
+  echo "Current voice: ${current:-<model default>}"
+  echo
+  echo "Available:"
+  for i in "${!NAMES[@]}"; do
+    mark=" "; [ "${NAMES[$i]}" = "$current" ] && mark="*"
+    printf "  %s %-10s %s\n" "$mark" "${NAMES[$i]}" "${DESCS[$i]}"
+  done
+  echo
+  echo "Usage: bin/voice Jennifer"
+  exit 0
+fi
+
+choice="$1"
+ok=0
+for n in "${NAMES[@]}"; do [ "$n" = "$choice" ] && ok=1; done
+if [ "$ok" = 0 ]; then
+  echo "Unknown voice '$choice'. Run 'bin/voice' with no argument to see the list."
+  echo "(Other names from Alibaba's full 55-voice list may also work — edit config.env directly to try one.)"
+  exit 1
+fi
+
+grep -v '^QWEN_OMNI_REALTIME_VOICE=' "$CFG" > "$CFG.tmp" 2>/dev/null || true
+echo "QWEN_OMNI_REALTIME_VOICE=$choice" >> "$CFG.tmp"
+mv "$CFG.tmp" "$CFG"
+chmod 600 "$CFG"
+echo "Voice set to $choice. Restarting gateway..."
+
+pkill -f 'qwenaudio.mjs' 2>/dev/null || true
+sleep 1.5
+mkdir -p "$REPO/.run"
+cd "$REPO"
+nohup node cli/bin/qwenaudio.mjs > "$REPO/.run/gateway.log" 2>&1 &
+disown 2>/dev/null || true
+for i in $(seq 1 300); do
+  curl -s -m 1 http://127.0.0.1:3101/api/health 2>/dev/null | grep -q '"ok"' && break
+  sleep 0.2
+done
+echo "Gateway restarted. Reload the page in your browser."

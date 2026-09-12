@@ -22,6 +22,11 @@ import {
 } from '../core/llm/openai-compatible-chat.mjs'
 import { enforceSameOrigin, isAllowedOrigin } from '../core/request-security.mjs'
 import {
+  readRuntimeSettings,
+  updateRuntimeSettings,
+  scheduleRestart,
+} from './runtime-settings.mjs'
+import {
   GatewayAccessManager,
   GatewayDeviceRegistry,
   parseGatewayAccessKeys,
@@ -689,6 +694,38 @@ app.post('/api/input/resume', (req, res) => {
 
 app.get('/api/input', (req, res) => {
   res.json(inputArbitration.status())
+})
+
+// Runtime settings the WebUI may change: the backend agent, its working
+// folder, and the voice. All three are read at Gateway start, so applying a
+// change writes config.env and restarts.
+app.get('/api/settings', (req, res) => {
+  res.setHeader('cache-control', 'no-store')
+  res.json(readRuntimeSettings())
+})
+
+app.post('/api/settings', (req, res) => {
+  let result
+  try {
+    result = updateRuntimeSettings(req.body || {})
+  } catch (error) {
+    return res.status(error.status || 400).json({ error: error.message })
+  }
+  if (!result.changed.length) {
+    return res.json({ changed: [], restarting: false, settings: readRuntimeSettings() })
+  }
+  const settings = readRuntimeSettings()
+  let restarting = false
+  try {
+    restarting = scheduleRestart().restarting
+  } catch (error) {
+    return res.status(error.status || 500).json({
+      error: error.message,
+      changed: result.changed,
+      settings,
+    })
+  }
+  return res.json({ changed: result.changed, restarting, settings })
 })
 
 app.get('/api/backend/ui', async (req, res, next) => {
