@@ -132,8 +132,8 @@ function rejectUpgrade(socket, status, message) {
   socket.destroy()
 }
 
-// How long a sampled voice stays on the session before it reverts.
-const VOICE_SAMPLE_HOLD_MS = 7000
+// A one-line sample cannot legitimately take longer than this.
+const VOICE_SAMPLE_TIMEOUT_MS = 15_000
 
 // One short, self-describing line. Naming the voice makes a row of samples
 // tellable apart when several are auditioned in a row.
@@ -357,6 +357,7 @@ export function attachRealtimeGateway(server, {
     let clientContext = normalizeClientContext()
     let sessionAssistantProfile = ''
     let sessionOutputVoice = ''
+    let voiceSampleSession = null
     const turns = new RealtimeTurnState()
     const transcripts = new TurnTranscripts()
     const turnCitations = new TurnCitations()
@@ -1351,6 +1352,66 @@ export function attachRealtimeGateway(server, {
         },
       })
     }
+    // Audition a voice without involving the conversation: a second, short
+    // lived provider Session speaks one line and closes. Its audio is
+    // forwarded on the ordinary audio channel, so the client plays it with no
+    // special handling, while transcript and history events -- which travel
+    // separately -- are never emitted for it.
+    const sampleVoice = async voice => {
+      const wanted = String(voice || '').trim()
+      if (!wanted) return
+      if (voiceSampleSession) return
+      const responseId = `voice_sample_${randomUUID()}`
+      let settled = false
+      const finish = () => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        send(ws, { type: GatewayServerEvent.AUDIO_DONE, responseId })
+        const session = voiceSampleSession
+        voiceSampleSession = null
+        session?.close?.()
+      }
+      const timer = setTimeout(finish, VOICE_SAMPLE_TIMEOUT_MS)
+      voiceSampleSession = new RealtimeProviderSession({
+        providerRegistry: realtimeProviderRegistry,
+        defaultProvider: realtimeSession.providerKey,
+        getAgentContext: () => ({}),
+        getSessionOptions: () => ({ voice: wanted }),
+        shouldReconnect: () => false,
+        logger: connectionLogger,
+        onEvent: event => {
+          if (event.type === 'response.output_audio.delta' || event.type === 'response.audio.delta') {
+            send(ws, {
+              type: GatewayServerEvent.AUDIO_DELTA,
+              audio: event.delta,
+              sampleRate: voiceSampleSession?.provider?.()?.outputSampleRate || 24000,
+              responseId,
+            })
+            return
+          }
+          if (event.type === 'response.done' || event.type === 'error') finish()
+        },
+        // RealtimeProviderSession calls each of these unconditionally.
+        onDiagnostic: () => {},
+        onConnected: () => {},
+        onReady: () => {},
+        onDisconnected: () => {},
+        onReconnected: () => {},
+        onConnectionState: () => {},
+        onError: () => finish(),
+        onReconnectError: () => finish(),
+      })
+      try {
+        await voiceSampleSession.ensure()
+        await voiceSampleSession.frontend?.speak(voiceSampleLine(wanted), 'voice-sample')
+      } catch (error) {
+        connectionLogger.warn('voice_sample.failed', { error: String(error?.message || error) })
+        finish()
+        throw error
+      }
+    }
+
     const updateSessionOutputVoice = voice => {
       const nextVoice = String(voice || '').trim()
       const provider = realtimeSession.provider()
@@ -1411,43 +1472,28 @@ export function attachRealtimeGateway(server, {
         return
       }
       if (message.type === GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATE) {
-        const previousVoice = sessionOutputVoice
+        // `sample` auditions a voice; it deliberately does not change the
+        // session. Previewing through the conversation would cost a model
+        // turn, let the model answer instead of reciting, and rebuild the
+        // live provider Session twice. sampleVoice() synthesises in a
+        // throwaway Session instead, so the conversation is untouched.
+        if (message.sample) {
+          sampleVoice(message.voice).catch(reportFrontendError)
+          send(ws, {
+            type: GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATED,
+            request_event_id: message.event_id,
+            voice: message.voice,
+            changed: false,
+            reconnecting: false,
+          })
+          return
+        }
         const result = updateSessionOutputVoice(message.voice)
         send(ws, {
           type: GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATED,
           request_event_id: message.event_id,
           ...result,
         })
-        // A provider applies voice selection when it creates a Session, so the
-        // sample has to wait for the rebuilt one. speak() uses the provider's
-        // speak response, which is conversation: 'none' -- auditioning a voice
-        // must not leave anything in the transcript. Afterwards the session
-        // goes back to the voice it was on, so a preview cannot quietly become
-        // the voice in use while the saved setting says otherwise.
-        if (message.sample) {
-          realtimeSession.ensure()
-            .then(() => realtimeSession.frontend?.speak(
-              voiceSampleLine(message.voice),
-              'voice-sample',
-            ))
-            .catch(reportFrontendError)
-          // The revert is on its own timer rather than chained to speak():
-          // a provider that never reports the sample finished would otherwise
-          // strand the session on an auditioned voice forever.
-          // An empty previous voice is meaningful: it means the session had no
-          // override and was using the configured default, so restoring '' is
-          // what puts the configured voice back.
-          if (previousVoice !== message.voice) {
-            setTimeout(() => {
-              if (sessionOutputVoice !== message.voice) return
-              try {
-                updateSessionOutputVoice(previousVoice)
-              } catch (error) {
-                reportFrontendError(error)
-              }
-            }, VOICE_SAMPLE_HOLD_MS)
-          }
-        }
         return
       }
       if (message.type === GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH) {
@@ -1849,6 +1895,9 @@ export function attachRealtimeGateway(server, {
     })
 
     ws.on('close', (code, reason) => {
+      // A sample outlives nothing: if the client is gone, so is its audition.
+      voiceSampleSession?.close?.()
+      voiceSampleSession = null
       activeClientLeases.release(
         ownerId,
         leaseParticipant,

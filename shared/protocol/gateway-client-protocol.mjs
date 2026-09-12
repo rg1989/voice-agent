@@ -217,9 +217,10 @@ export const GatewayClientEventPublishResultSchema = GatewayServerEnvelopeSchema
 export const GatewaySessionOutputVoiceUpdateSchema = GatewayClientEnvelopeSchema.extend({
   type: z.literal(GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATE),
   voice: z.string().trim().min(1).max(160),
-  // Ask the assistant to speak one short line in the new voice, so the user can
-  // hear a candidate before committing to it. Sampling uses the ordinary speak
-  // path, which does not enter conversation history.
+  // Audition only: speak one short line in this voice and leave the session's
+  // own voice alone. The sample is synthesised in a separate short-lived
+  // provider Session, so it costs the conversation nothing and cannot appear
+  // in the transcript.
   sample: z.boolean().optional(),
 })
 
