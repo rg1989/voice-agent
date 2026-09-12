@@ -1833,7 +1833,9 @@ article.user .message-body .inline-code { background: #5e44c9; color: #f0eaff; }
 /* Header 中央的工作区指示器：随时看得见在哪个项目里干活。
    它占据 brand 与右侧状态区之间的整条空档并居中，所以既在视线中央，
    又不会压住型号和状态 —— header 只有 68px，重叠比偏移更糟。 */
-header { position: relative; }
+/* backdrop-filter 在 header 上建了独立层叠上下文，下拉面板的 z-index 只在
+   header 内部有效，于是被后面的消息盖住。给 header 本身一个层级即可。 */
+header { position: relative; z-index: 60; }
 header:has(.workspace-switch) .backend { margin-left: 0; }
 
 .workspace-switch {
@@ -1911,14 +1913,50 @@ header:has(.workspace-switch) .backend { margin-left: 0; }
   .workspace-chip { max-width: 190px; }
 }
 
-/* 够宽的时候把它放到页面正中。窄屏不这么做：右侧状态区有 800px 上下，
-   绝对居中会压在型号和状态上，重叠比偏移更糟。 */
-@media (min-width: 1600px) {
-  .workspace-switch {
-    position: absolute;
-    left: 50%;
-    flex: 0 0 auto;
-    transform: translateX(-50%);
-  }
-  header:has(.workspace-switch) .backend { margin-left: auto; }
+/* 不用媒体查询做「绝对居中」：右侧状态区约 834px 宽，安全阈值还随文件夹名
+   长短浮动（163px 的名字要 1864px 视口，长名字要 2000px 以上）。定死一个断点
+   必然在某些名字下重叠，所以一律走上面那条居中的空档。 */
+
+/* 滚动条：应用其他地方要么藏起来，要么用系统默认的白条，在深色面板里很跳。
+   这几处需要看得见滚动位置，所以给一条低调的暗色滑块。 */
+.folder-list,
+.settings-panel,
+.knowledge-panel {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.folder-list::-webkit-scrollbar,
+.settings-panel::-webkit-scrollbar,
+.knowledge-panel::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.folder-list::-webkit-scrollbar-track,
+.settings-panel::-webkit-scrollbar-track,
+.knowledge-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.folder-list::-webkit-scrollbar-thumb,
+.settings-panel::-webkit-scrollbar-thumb,
+.knowledge-panel::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.18);
+  background-clip: content-box;
+}
+
+.folder-list::-webkit-scrollbar-thumb:hover,
+.settings-panel::-webkit-scrollbar-thumb:hover,
+.knowledge-panel::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.32);
+  background-clip: content-box;
+}
+
+.folder-list::-webkit-scrollbar-corner,
+.settings-panel::-webkit-scrollbar-corner,
+.knowledge-panel::-webkit-scrollbar-corner {
+  background: transparent;
 }
