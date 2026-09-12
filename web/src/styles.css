@@ -1884,11 +1884,14 @@ header:has(.workspace-switch) .runtime-status + * { margin-left: auto; }
 .workspace-dropdown {
   position: absolute;
   top: calc(100% + 9px);
-  left: 50%;
+  /* Anchored to the chip's left edge, not centred on it: the chip sits in the
+     header's left zone, so a centred panel runs off the left of the viewport
+     in a narrow window. */
+  left: 0;
   z-index: 40;
-  width: min(430px, calc(100vw - 40px));
+  width: min(430px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
   padding: 14px 16px;
-  transform: translateX(-50%);
   border: 1px solid #ffffff1c;
   border-radius: 16px;
   background: rgba(18, 21, 27, 0.97);
@@ -1981,6 +1984,18 @@ header:has(.workspace-switch) .runtime-status + * { margin-left: auto; }
     margin-left: auto;
     transform: none;
   }
+}
+
+/* 再窄就按重要性丢段，而不是把三段一起挤成看不懂的碎字。
+   模型名在设置里也看得到，后台名同理；状态和花费丢不得。 */
+.runtime-status .backend { white-space: nowrap; }
+
+@media (max-width: 1100px) {
+  .runtime-status .model-status { display: none; }
+}
+
+@media (max-width: 860px) {
+  .runtime-status .backend { display: none; }
 }
 
 /* 滚动条：应用其他地方要么藏起来，要么用系统默认的白条，在深色面板里很跳。
