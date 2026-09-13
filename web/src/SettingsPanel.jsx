@@ -97,7 +97,7 @@ export default function SettingsPanel({ onClose, setOutputVoice }) {
   return <aside className="settings-panel" aria-label={t('设置')}>
     <header>
       <b>{t('设置')}</b>
-      {onClose && <button type="button" onClick={onClose} aria-label={t('关闭')}>×</button>}
+      {onClose && <button type="button" className="header-action" onClick={onClose} aria-label={t('关闭')} title={t('关闭')}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17" /></svg></button>}
     </header>
 
     {restarting && <p className="settings-notice" role="status">
@@ -255,7 +255,7 @@ export default function SettingsPanel({ onClose, setOutputVoice }) {
         </section>
 
         <p className="settings-hint settings-footnote">
-          {t('切换大脑或工作目录会重启 Gateway，正在进行的任务会中断；换音色不会。')}
+          {t('除了音色，这里的每项改动都会重启 Gateway，正在进行的任务会中断。')}
         </p>
       </>}
   </aside>

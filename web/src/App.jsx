@@ -94,7 +94,6 @@ const initialDesktopSurfaceMode = (
 )
 const activeClientType = gatewayClientType(desktopOrbMode ? 'desktop' : 'web')
 const activeClientInstanceId = gatewayClientInstanceId()
-const compactVoiceControl = desktopOrbMode || activeClientType === 'mobile'
 const composerEnabled = supportsComposerInput(activeClientType)
 const MODEL_INPUT_MODE_ORDER = ['text', 'image', 'video', 'audio']
 const MODEL_INPUT_MODE_LABELS = {
@@ -1497,7 +1496,6 @@ export default function App() {
           <span />
         </button>
         <p>VOICE FRONTEND</p>
-        <h1>{t('你说，我来调度。')}</h1>
         <small>{voice.error || activity}</small>
       </div>
 

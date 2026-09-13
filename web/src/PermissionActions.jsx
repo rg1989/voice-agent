@@ -7,9 +7,11 @@ const decisions = [
 ]
 
 export default function PermissionActions({ authorization, onRespond }) {
-  // Consent to computer control lasts for one task; there is no "always".
+  // 电脑控制没有「始终允许」；允许的范围（整个任务还是只这一步）由设置决定，
+  // 卡片上的说明已经写明，按钮就不能再说「允许此任务」。
   const available = authorization.category === 'computer_use'
-    ? decisions.filter(({ value }) => value !== 'always')
+    ? [{ value: 'task', label: '允许', title: '按上面说明的范围允许电脑控制' },
+      decisions.find(({ value }) => value === 'reject')]
     : decisions
   return <div className="permission-controls" aria-busy={Boolean(authorization.submitting)}>
     <div className="permission-actions" role="group" aria-label={t('权限决定')}>

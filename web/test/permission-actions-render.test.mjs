@@ -57,3 +57,14 @@ test('each button sends its own decision and pending submission keeps all labels
   assert.match(html, /role="alert">Could not send; try again\./)
   assert.match(html, />Always allow<\/button>/)
 })
+
+test('computer control offers only allow and deny, without claiming a task-wide scope', () => {
+  setRuntimeLanguage('en')
+  const calls = []
+  const html = markup({ category: 'computer_use' })
+  assert.deepEqual([...html.matchAll(/<button[^>]*>([^<]+)<\/button>/g)].map(match => match[1]), ['Allow', 'Deny'])
+  const element = PermissionActions({ authorization: { category: 'computer_use' }, onRespond: decision => calls.push(decision) })
+  const group = Children.toArray(element.props.children)[0]
+  for (const button of Children.toArray(group.props.children)) button.props.onClick()
+  assert.deepEqual(calls, ['task', 'reject'])
+})

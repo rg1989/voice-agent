@@ -133,7 +133,7 @@ export default function KnowledgeLibraryPanel({ onClose, getTask }) {
   return <aside className="knowledge-panel" aria-label={t('资料库')}>
     <header>
       <b>{t('资料库')}</b>
-      {onClose && <button type="button" onClick={onClose} aria-label={t('关闭')}>×</button>}
+      {onClose && <button type="button" className="header-action" onClick={onClose} aria-label={t('关闭')} title={t('关闭')}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17" /></svg></button>}
     </header>
 
     {disabled
