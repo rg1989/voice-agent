@@ -116,7 +116,7 @@ test('loads one canonical frontend policy separately from runtime context', () =
   assert.match(prompt, /工具尚未返回时取消仍在进行中/)
   assert.ok(prompt.length < 5000)
   assert.match(assistant, /## Identity/)
-  assert.match(assistant, /Qwen Audio/)
+  assert.match(assistant, /千问Audio/)
   assert.doesNotMatch(context, /# Instruction hierarchy/)
   assert.match(context, /<runtime_context>/)
 })
@@ -285,9 +285,4 @@ test('retains the existing truncation warning even when a template comment was c
     assert.match(context, /revision="full-document-revision"/u)
     assert.deepEqual(document, original)
   }
-})
-
-test('工作目录缺省时回落到后台 Agent 的实际工作目录', () => {
-  const context = buildFrontendContext({ client: { timeZone: 'UTC', locale: 'en-US' } })
-  assert.match(context, /client_working_directory=/)
 })

@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "node --watch src/index.mjs",
     "start": "node src/index.mjs",
-    "test": "QWEN_AUDIO_VOICE_SUMMARY_ONLY=false node --test"
+    "test": "node test/run.mjs"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "1.4.0",
