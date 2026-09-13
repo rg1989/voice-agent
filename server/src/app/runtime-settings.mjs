@@ -110,6 +110,9 @@ export const BRAINS = Object.freeze([
 ])
 
 export const TURN_DETECTION_DEFAULTS = Object.freeze({ threshold: 0.5, silenceMs: 800 })
+// DashScope honours 200-6000 ms. A longer value is accepted but ignored: the
+// turn then ends after a short default pause instead.
+export const TURN_SILENCE_MS_RANGE = Object.freeze({ min: 200, max: 6000 })
 
 function clampNumber(value, { min, max }) {
   // Number('') 是 0，会把「没配置」读成「调到最小」。
@@ -195,7 +198,7 @@ export function readRuntimeSettings() {
     summaryOnly: valueOf(lines, CONFIG_KEYS.summaryOnly).toLowerCase() === 'true',
     turnThreshold: clampNumber(valueOf(lines, CONFIG_KEYS.turnThreshold), { min: 0, max: 1 })
       ?? TURN_DETECTION_DEFAULTS.threshold,
-    turnSilenceMs: clampNumber(valueOf(lines, CONFIG_KEYS.turnSilenceMs), { min: 200, max: 5000 })
+    turnSilenceMs: clampNumber(valueOf(lines, CONFIG_KEYS.turnSilenceMs), TURN_SILENCE_MS_RANGE)
       ?? TURN_DETECTION_DEFAULTS.silenceMs,
     turnDefaults: TURN_DETECTION_DEFAULTS,
     computerUse: computerUseMode({
@@ -277,7 +280,7 @@ export function updateRuntimeSettings(patch = {}) {
   }
 
   if (patch.turnSilenceMs !== undefined) {
-    const silence = clampNumber(patch.turnSilenceMs, { min: 200, max: 5000 })
+    const silence = clampNumber(patch.turnSilenceMs, TURN_SILENCE_MS_RANGE)
     if (silence === null) {
       throw Object.assign(new Error('turnSilenceMs must be a number'), { status: 400 })
     }

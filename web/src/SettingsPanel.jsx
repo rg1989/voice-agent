@@ -302,16 +302,19 @@ export default function SettingsPanel({ onClose, setOutputVoice }) {
         <section className="settings-group">
           <h4>{t('断句')}</h4>
           <p className="settings-hint">{t('助手什么时候认为你说完了。改完会重启 Gateway。')}</p>
+          {/* Seconds on screen, milliseconds in config.env. The voice service
+              allows 0.2-6 s, so 0 means its shortest pause. */}
           <TurnSlider
             label={t('停顿多久算说完')}
-            hint={t('调大一点，中途思考的停顿就不会被当成说完了。')}
-            value={settings.turnSilenceMs}
-            min={200}
-            max={3000}
-            step={100}
+            hint={t('调大一点，中途思考的停顿就不会被当成说完了。语音服务最长只支持 6 秒。')}
+            value={settings.turnSilenceMs / 1000}
+            min={0}
+            max={6}
+            step={0.1}
+            marks={[0, 1, 2, 3, 4, 5, 6]}
             disabled={disabled}
-            format={value => t('{count} 毫秒', { count: value })}
-            onCommit={value => save({ turnSilenceMs: value })}
+            format={value => t('{count} 秒', { count: Math.max(0.2, value).toFixed(1) })}
+            onCommit={value => save({ turnSilenceMs: Math.max(200, Math.round(value * 1000)) })}
           />
           <TurnSlider
             label={t('拾音灵敏度')}

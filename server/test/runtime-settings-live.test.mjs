@@ -97,3 +97,13 @@ test('a restart reads the live settings from config.env, not the inherited env',
   })
   assert.deepEqual(env, { PATH: '/usr/bin' })
 })
+
+test('the pause before a reply stays within what the voice service honours', () => {
+  updateRuntimeSettings({ turnSilenceMs: 1400 })
+  assert.equal(readRuntimeSettings().turnSilenceMs, 1400)
+  // DashScope ignores anything above 6 s and falls back to a short pause.
+  updateRuntimeSettings({ turnSilenceMs: 9000 })
+  assert.equal(readRuntimeSettings().turnSilenceMs, 6000)
+  updateRuntimeSettings({ turnSilenceMs: 0 })
+  assert.equal(readRuntimeSettings().turnSilenceMs, 200)
+})

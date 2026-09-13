@@ -8,7 +8,7 @@ const translations = {
   '断句': 'Turn taking',
   '助手什么时候认为你说完了。改完会重启 Gateway。': 'When the assistant decides you have finished speaking. Changing these restarts the gateway.',
   '停顿多久算说完': 'Pause before it replies',
-  '调大一点，中途思考的停顿就不会被当成说完了。': 'Raise this so a pause for thought is not taken as the end of your sentence.',
+  '调大一点，中途思考的停顿就不会被当成说完了。语音服务最长只支持 6 秒。': 'Raise this so a pause for thought is not taken as the end of your sentence. The voice service allows at most 6 seconds.',
   '拾音灵敏度': 'Microphone sensitivity',
   '调高一点，回声和环境音就不容易打断助手正在说的话。': 'Raise this so echo and room noise are less likely to interrupt.',
   '{count} 毫秒': '{count} ms',

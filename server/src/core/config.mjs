@@ -612,7 +612,7 @@ export const config = {
     ? numberSetting(process.env.QWEN_AUDIO_TURN_THRESHOLD, 0.5, { min: 0, max: 1 })
     : null,
   turnDetectionSilenceMs: process.env.QWEN_AUDIO_TURN_SILENCE_MS
-    ? numberSetting(process.env.QWEN_AUDIO_TURN_SILENCE_MS, 800, { min: 200, max: 5000 })
+    ? numberSetting(process.env.QWEN_AUDIO_TURN_SILENCE_MS, 800, { min: 200, max: 6000 })
     : null,
   voiceSummaryOnly: String(
     process.env.QWEN_AUDIO_VOICE_SUMMARY_ONLY || 'false'
