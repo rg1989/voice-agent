@@ -60,12 +60,17 @@ if [ "$up" != 1 ]; then
 fi
 
 sleep 1
-curl -s -m 3 http://127.0.0.1:3101/api/health 2>/dev/null | python3 -c "
-import json,sys
-d=json.load(sys.stdin); b=d.get('backend') or {}
-print('  gateway :', d.get('status'))
-print('  brain   :', b.get('label'), '-', b.get('status'))
-print('  folder  :', b.get('directory'))
-print('  model   :', d.get('realtimeModel'))
-" 2>/dev/null
+# node, not python3: on a Mac without the Xcode tools python3 is a stub that
+# pops an install dialog.
+curl -s -m 3 http://127.0.0.1:3101/api/health 2>/dev/null | node -e '
+let raw = ""
+process.stdin.on("data", chunk => { raw += chunk }).on("end", () => {
+  try {
+    const d = JSON.parse(raw), b = d.backend || {}
+    console.log("  gateway :", d.status)
+    console.log("  brain   :", b.label, "-", b.status)
+    console.log("  folder  :", b.directory)
+    console.log("  model   :", d.realtimeModel)
+  } catch {}
+})' 2>/dev/null
 echo "  Reload the page in your browser."

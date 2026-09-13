@@ -113,6 +113,31 @@ npm install -g qwen-audio-agent
 For building from source, installing from GitHub, and obtaining a DashScope
 API Key, see the [installation guide](docs/getting-started/install.md).
 
+### Moving to another Mac
+
+To set up a second Mac (Intel or Apple silicon) with the same keys and settings,
+export them once on the machine that already works:
+
+```bash
+node bin/setup-bundle.mjs export
+```
+
+This asks for a passphrase and writes an encrypted
+`~/Desktop/voice-agent-setup.qwsetup` with the gateway config (API keys, voice,
+brain, settings), the assistant's persona and memory notes, and Oh My Pi's
+providers, logins and skills. Copy it to the new Mac by AirDrop or USB, then run
+there:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rg1989/voice-agent/main/bin/setup-mac | bash -s -- ~/Downloads/voice-agent-setup.qwsetup
+```
+
+It installs Node, Bun and Oh My Pi for your user (no admin password), downloads
+the code to `~/Documents/Projects/qwen-audio-agent`, restores the setup file and
+starts the gateway at http://127.0.0.1:3101. Conversation history and the Claude
+Code login (kept in the Keychain) do not move; run `claude` once if you use it as
+the brain. Computer control needs macOS 14 or newer.
+
 ## Quick Start
 
 1. Create your config and fill in the API Key:
