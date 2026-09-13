@@ -78,7 +78,10 @@ export function listeningToolHandlers(runtime) {
       return silentOutput(runtime, context, { status: 'ignored' })
     },
     [STOP_LISTENING_TOOL_NAME]: context => {
-      const stopped = runtime.listeningGate?.stop('stop') === true
+      const stopped = runtime.listeningGate?.stop(
+        'stop',
+        context.callContext?.responseId || context.event?.response_id,
+      ) === true
       return silentOutput(
         runtime,
         context,

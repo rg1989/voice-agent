@@ -2159,6 +2159,13 @@ export function attachRealtimeGateway(server, {
             origin: playbackContext?.origin || 'model',
           })
           presentationRuntime.startPlayback(id)
+          if (
+            !playbackContext?.suppressed
+            && !silenceReason(playbackContext?.turnId)
+            && inputEnabled
+            && !sleeping
+            && !inputSuspended
+          ) listeningGate.assistantSpeaking(id)
         }
       } else if (event.type === GatewayClientEvent.PLAYBACK_ENDED) {
         const id = String(event.responseId || '')

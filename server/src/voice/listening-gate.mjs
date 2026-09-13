@@ -153,6 +153,9 @@ export class ListeningGate {
     // restarts it.
     this.followUpEndsAt = 0
     this.ignoredResponseId = ''
+    // The response that asked to stop listening: its own audio must not wake
+    // the gate again.
+    this.quietResponseId = ''
     // Turns of the current wake still waiting for the wake word check.
     this.wakeCheck = null
     this.closed = false
@@ -225,6 +228,17 @@ export class ListeningGate {
     this.#startSafetyTimer()
   }
 
+  // The assistant starts speaking on its own while armed (a task result, a
+  // question): listen without the wake word, and give it the same follow-up
+  // window once it has finished.
+  assistantSpeaking(responseId = '') {
+    if (this.state !== ListeningState.ARMED) return
+    if (responseId && responseId === this.quietResponseId) return
+    this.#clearPreRoll()
+    this.#transition(ListeningState.AWAKE, 'assistant_speaking')
+    this.#startSafetyTimer()
+  }
+
   // Nothing to answer yet (a bare wake word): wait for the request again.
   keepListening() {
     if (this.state === ListeningState.AWAKE) this.#startTimer(this.#noSpeechMs(), 'no_speech')
@@ -265,9 +279,10 @@ export class ListeningGate {
 
   // Re-arm on request (stop phrase, stop_listening). Only
   // meaningful in wake_word mode.
-  stop(reason) {
+  stop(reason, responseId = '') {
     if (!this.wakeWordMode) return false
     this.arm(reason)
+    this.quietResponseId = String(responseId || '')
     return true
   }
 

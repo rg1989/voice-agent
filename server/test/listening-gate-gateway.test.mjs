@@ -910,3 +910,31 @@ test('speech begun just before the window ends is not cut off', async t => {
   assert.equal(client.received.some(event => event.reason === 'listening_armed'), false)
   client.socket.close()
 })
+
+test('speech the assistant starts on its own opens the follow-up window', async t => {
+  const { server, frontends } = await startGateway(t)
+  const client = await connect(server)
+  await waitUntil(() => client.listening()?.state === 'armed')
+  const frontend = frontends[0]
+
+  // A task result spoken while armed: nobody said the wake word.
+  frontend.emit({ type: 'response.created', response: { id: 'resp-s1' } })
+  frontend.emit({ type: 'response.output_audio.delta', response_id: 'resp-s1', delta: chunk(1) })
+  await waitUntil(() => audioDeltaCount(client) === 1)
+  assert.equal(client.listening().state, 'armed')
+  client.send({ type: 'playback.started', responseId: 'resp-s1' })
+  await waitUntil(() => client.listening().state === 'awake')
+  assert.equal(client.listening().reason, 'assistant_speaking')
+
+  // The microphone reaches the provider, so the user can talk over it.
+  const appended = frontend.appended.length
+  client.send({ type: 'audio.append', audio: chunk(5) })
+  await waitUntil(() => frontend.appended.length === appended + 1)
+
+  frontend.emit({ type: 'response.done', response: { id: 'resp-s1', status: 'completed' } })
+  client.send({ type: 'playback.ended', responseId: 'resp-s1' })
+  await waitUntil(() => countdowns(client).length === 1)
+  assert.equal(countdowns(client)[0].followUpMs, 5000)
+  assert.equal(client.listening().state, 'awake')
+  client.socket.close()
+})
