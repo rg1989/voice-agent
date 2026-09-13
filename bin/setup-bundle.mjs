@@ -163,13 +163,15 @@ function adaptConfig(text, sourceHome, notes) {
 // the copy of what was on this Mac before.
 function moveAside(path, stamp) {
   const backup = `${path}.before-import-${stamp}`
-  if (existsSync(path)) renameSync(path, backup)
-  if (!path.endsWith('.db')) return
+  let moved = false
+  if (existsSync(path)) { renameSync(path, backup); moved = true }
+  if (!path.endsWith('.db')) return moved
   // SQLite pairs "<name>" with "<name>-wal"; keep that pairing for the backup,
   // and never leave an old -wal to be replayed onto the new database.
   for (const suffix of ['-wal', '-shm']) {
-    if (existsSync(path + suffix)) renameSync(path + suffix, backup + suffix)
+    if (existsSync(path + suffix)) { renameSync(path + suffix, backup + suffix); moved = true }
   }
+  return moved
 }
 
 async function importBundle(input, { force = false } = {}) {
@@ -181,7 +183,7 @@ async function importBundle(input, { force = false } = {}) {
   const digest = createHash('sha256').update(sealed).digest('hex')
   const previous = existsSync(marker) ? JSON.parse(readFileSync(marker, 'utf8')) : null
   if (previous?.sha256 === digest && !force) {
-    console.log(`This setup file was already imported (${previous.importedAt}); keeping this Mac's current settings and logins. Add --force to apply it again.`)
+    console.log(`This setup file was already imported (${previous.importedAt}); keeping this computer's current settings and logins. Add --force to apply it again.`)
     return
   }
   const manifest = JSON.parse(gunzipSync(unseal(sealed, await passphrase({ confirm: false }))))
@@ -189,6 +191,7 @@ async function importBundle(input, { force = false } = {}) {
   const notes = []
   const stamp = new Date().toISOString().replace(/[:.]/g, '-')
   let restored = 0
+  let backedUp = false
   for (const file of manifest.files) {
     if (!ROOTS[file.root] || file.path.split(/[\\/]/).includes('..')) {
       throw new Error(`refusing unexpected path in setup file: ${file.root}/${file.path}`)
@@ -200,7 +203,7 @@ async function importBundle(input, { force = false } = {}) {
     }
     mkdirSync(dirname(target), { recursive: true, mode: 0o700 })
     if (existsSync(target) && readFileSync(target).equals(data)) continue
-    moveAside(target, stamp)
+    if (moveAside(target, stamp)) backedUp = true
     writeFileSync(target, data, { mode: 0o600 })
     console.log(`  restored ${target}`)
     restored += 1
@@ -208,9 +211,9 @@ async function importBundle(input, { force = false } = {}) {
   for (const note of notes) console.log(`  note: ${note}`)
   mkdirSync(ROOTS.qwaudio, { recursive: true, mode: 0o700 })
   writeFileSync(marker, JSON.stringify({ sha256: digest, importedAt: new Date().toISOString() }), { mode: 0o600 })
-  console.log(restored
-    ? `Setup restored. Files that were replaced were kept next to them with the suffix .before-import-${stamp}.`
-    : 'This Mac already has this setup; nothing changed.')
+  if (!restored) console.log('This computer already has this setup; nothing changed.')
+  else if (backedUp) console.log(`Setup restored. Files it replaced were kept next to them with the suffix .before-import-${stamp}.`)
+  else console.log('Setup restored.')
 }
 
 const [command, ...rest] = process.argv.slice(2)
