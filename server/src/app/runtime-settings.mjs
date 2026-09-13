@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process'
 import { readFileSync, writeFileSync, chmodSync, existsSync, statSync, readdirSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { config } from '../core/config.mjs'
+import { backendWorkspaceEnvironmentKeys, config } from '../core/config.mjs'
 import { computerUseMode } from '../core/computer-use-mode.mjs'
 
 // Runtime settings the WebUI is allowed to change: which agent does the work,
@@ -269,9 +269,13 @@ const MANAGED_ENV_KEYS = Object.freeze([
   'ACP_LABEL',
 ])
 
-function restartEnvironment() {
-  const env = { ...process.env }
+export function restartEnvironment(source = process.env) {
+  const env = { ...source }
   for (const key of MANAGED_ENV_KEYS) delete env[key]
+  // At start the Gateway writes each backend's workspace variable (ACP_WORKSPACE,
+  // CLAUDE_CODE_WORKSPACE, ...) into its own environment from QWAUDIO_WORKSPACE.
+  // Inherited by the replacement, it would outrank the folder just saved.
+  for (const key of backendWorkspaceEnvironmentKeys()) delete env[key]
   return env
 }
 

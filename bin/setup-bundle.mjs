@@ -2,7 +2,7 @@
 // Carry this machine's voice-agent setup to another Mac in one encrypted file.
 //
 //   node bin/setup-bundle.mjs export [file]   default: ~/Desktop/voice-agent-setup.qwsetup
-//   node bin/setup-bundle.mjs import <file>
+//   node bin/setup-bundle.mjs import <file> [--force]
 //
 // What travels: the gateway config (API keys, voice, brain, turn taking, computer
 // control), the assistant's persona and memory notes, and Oh My Pi's providers,
@@ -12,7 +12,7 @@
 //
 // The passphrase is read from QWAUDIO_SETUP_PASSPHRASE, or asked for on the terminal.
 import { spawnSync } from 'node:child_process'
-import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'node:crypto'
+import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync } from 'node:crypto'
 import {
   existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync,
   renameSync, rmSync, statSync, writeFileSync,
@@ -67,12 +67,17 @@ function hidden(prompt) {
   process.stdout.write(prompt)
   spawnSync('stty', ['-echo'], { stdio: ['inherit', 'ignore', 'ignore'] })
   const rl = createInterface({ input: process.stdin })
-  return new Promise(resolve => rl.once('line', line => {
-    rl.close()
-    spawnSync('stty', ['echo'], { stdio: ['inherit', 'ignore', 'ignore'] })
-    process.stdout.write('\n')
-    resolve(line)
-  }))
+  return new Promise((resolve, reject) => {
+    let answer = null
+    rl.once('line', line => { answer = line; rl.close() })
+    // Ctrl-D closes the input without a line; that must fail, not end quietly.
+    rl.once('close', () => {
+      spawnSync('stty', ['echo'], { stdio: ['inherit', 'ignore', 'ignore'] })
+      process.stdout.write('\n')
+      if (answer === null) reject(new Error('no passphrase entered'))
+      else resolve(answer)
+    })
+  })
 }
 
 async function passphrase({ confirm }) {
@@ -154,15 +159,35 @@ function adaptConfig(text, sourceHome, notes) {
   }).join('\n')
 }
 
-function moveAside(path) {
-  if (existsSync(path)) renameSync(path, `${path}.before-import`)
+// Every import keeps its own backup, so running setup again never overwrites
+// the copy of what was on this Mac before.
+function moveAside(path, stamp) {
+  const backup = `${path}.before-import-${stamp}`
+  if (existsSync(path)) renameSync(path, backup)
+  if (!path.endsWith('.db')) return
+  // SQLite pairs "<name>" with "<name>-wal"; keep that pairing for the backup,
+  // and never leave an old -wal to be replayed onto the new database.
+  for (const suffix of ['-wal', '-shm']) {
+    if (existsSync(path + suffix)) renameSync(path + suffix, backup + suffix)
+  }
 }
 
-async function importBundle(input) {
-  if (!input) throw new Error('usage: node bin/setup-bundle.mjs import <file>')
-  const manifest = JSON.parse(gunzipSync(unseal(readFileSync(input), await passphrase({ confirm: false }))))
+async function importBundle(input, { force = false } = {}) {
+  if (!input) throw new Error('usage: node bin/setup-bundle.mjs import <file> [--force]')
+  const sealed = readFileSync(input)
+  // Re-running setup passes the same file again. Applying it twice would put
+  // back logins and settings that have changed on this Mac since the first time.
+  const marker = join(ROOTS.qwaudio, '.imported-setup.json')
+  const digest = createHash('sha256').update(sealed).digest('hex')
+  const previous = existsSync(marker) ? JSON.parse(readFileSync(marker, 'utf8')) : null
+  if (previous?.sha256 === digest && !force) {
+    console.log(`This setup file was already imported (${previous.importedAt}); keeping this Mac's current settings and logins. Add --force to apply it again.`)
+    return
+  }
+  const manifest = JSON.parse(gunzipSync(unseal(sealed, await passphrase({ confirm: false }))))
   if (manifest.version !== 1) throw new Error(`unsupported setup file version ${manifest.version}`)
   const notes = []
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-')
   let restored = 0
   for (const file of manifest.files) {
     if (!ROOTS[file.root] || file.path.split(/[\\/]/).includes('..')) {
@@ -175,26 +200,27 @@ async function importBundle(input) {
     }
     mkdirSync(dirname(target), { recursive: true, mode: 0o700 })
     if (existsSync(target) && readFileSync(target).equals(data)) continue
-    moveAside(target)
-    // A leftover -wal from an older database would be replayed onto the new one.
-    if (target.endsWith('.db')) { moveAside(`${target}-wal`); moveAside(`${target}-shm`) }
+    moveAside(target, stamp)
     writeFileSync(target, data, { mode: 0o600 })
     console.log(`  restored ${target}`)
     restored += 1
   }
   for (const note of notes) console.log(`  note: ${note}`)
+  mkdirSync(ROOTS.qwaudio, { recursive: true, mode: 0o700 })
+  writeFileSync(marker, JSON.stringify({ sha256: digest, importedAt: new Date().toISOString() }), { mode: 0o600 })
   console.log(restored
-    ? 'Setup restored. Files that were replaced were kept next to them as *.before-import.'
+    ? `Setup restored. Files that were replaced were kept next to them with the suffix .before-import-${stamp}.`
     : 'This Mac already has this setup; nothing changed.')
 }
 
-const [command, file] = process.argv.slice(2)
+const [command, ...rest] = process.argv.slice(2)
+const file = rest.find(arg => arg !== '--force')
 const run = { export: exportBundle, import: importBundle }[command]
 if (!run) {
-  console.error('usage: node bin/setup-bundle.mjs export [file] | import <file>')
+  console.error('usage: node bin/setup-bundle.mjs export [file] | import <file> [--force]')
   process.exit(2)
 }
-run(file).catch(error => {
+run(file, { force: rest.includes('--force') }).catch(error => {
   spawnSync('stty', ['echo'], { stdio: ['inherit', 'ignore', 'ignore'] })
   console.error(`setup-bundle: ${error.message}`)
   process.exit(1)

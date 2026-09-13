@@ -87,6 +87,14 @@ export function resolveBackendWorkspace(
     : defaultBackendWorkspace(dataDirectory, env, root)
 }
 
+// Workspace variables (ACP_WORKSPACE, CLAUDE_WORKSPACE, ...) that the Gateway
+// derives from QWAUDIO_WORKSPACE when it starts.
+export function backendWorkspaceEnvironmentKeys() {
+  return backendNames()
+    .map(name => backendDefinition(name)?.workspaceEnvironment)
+    .filter(Boolean)
+}
+
 export function resolveAcpArgs(value) {
   const source = String(value || '').trim()
   if (!source) return []
