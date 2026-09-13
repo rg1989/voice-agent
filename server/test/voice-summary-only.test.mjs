@@ -45,6 +45,18 @@ test('only backend-authored origins are summarised', () => {
 })
 
 test('a summary longer than the cap is bounded', () => {
-  const long = `VOICE: ${'x'.repeat(900)}`
-  assert.equal(voiceSafe(long, 'announcement', { enabled: true }).length, 400)
+  const long = `VOICE: ${'x'.repeat(2000)}`
+  assert.equal(voiceSafe(long, 'announcement', { enabled: true }).length, 900)
+})
+
+test('an over-long summary is cut at a sentence end, not mid-word', () => {
+  // 切在半个词中间听起来就是「说到一半没了」，正是用户抱怨的那种断掉。
+  const sentence = `${'word '.repeat(30)}ends here. `
+  const spoken = voiceSafe(
+    `VOICE: ${sentence.repeat(8)}`,
+    'announcement',
+    { enabled: true },
+  )
+  assert.ok(spoken.length <= 900)
+  assert.ok(spoken.endsWith('.'), `expected a sentence end, got: ${spoken.slice(-40)}`)
 })
