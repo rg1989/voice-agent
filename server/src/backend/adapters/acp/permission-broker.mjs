@@ -4,10 +4,15 @@ import { AgentError } from '../../agent-error.mjs'
 import { ACP_SESSION_TOOL_NAMES } from './session-tools.mjs'
 import {
   AuthorizationStatus,
+  COMPUTER_USE_AUTHORIZATION_CATEGORY,
   normalizeAuthorization,
   resolveAuthorization,
 } from '../../../core/work-authorization.mjs'
 import { BackendEventType, backendEvent } from '../../../core/backend-events.mjs'
+
+// ponytail: a name match on the request. An obfuscated invocation still gets
+// through, so this narrows the bash route to the runtime rather than closing it.
+const COMPUTER_USE_RUNTIME = /open-computer-use|OpenComputerUse/i
 
 function clean(value) {
   return String(value || '').trim()
@@ -109,14 +114,20 @@ export class PermissionBroker {
     this.resolved = new Map()
   }
 
-  async request(params, { signal, session } = {}) {
+  async request(params, { signal, session, explicit = false } = {}) {
     const name = clean(params?.toolCall?.name || params?.toolCall?.title)
     const internal = ACP_SESSION_TOOL_NAMES.some(toolName => (
       name === toolName
       || name.endsWith(`__${toolName}`)
       || name.startsWith(`${toolName} (`)
     ))
-    if (this.permissionMode === 'full' || internal) {
+    // explicit: raised by the Gateway itself and must really reach the user
+    // (computer control). Running the open-computer-use runtime directly, for
+    // example its `call click` command line through bash, is computer control
+    // too. Neither full mode nor the internal tool list may approve either.
+    const computerUse = explicit
+      || COMPUTER_USE_RUNTIME.test(JSON.stringify(params?.toolCall ?? ''))
+    if (!computerUse && (this.permissionMode === 'full' || internal)) {
       const option = optionFor(params, 'always')
       return option
         ? { outcome: { outcome: 'selected', optionId: option.optionId } }
@@ -134,7 +145,9 @@ export class PermissionBroker {
       id,
       taskId: session?.coordinationRunId || null,
       status: AuthorizationStatus.PENDING,
-      category: operation.kind || bounded(name, 80) || 'unknown',
+      category: computerUse
+        ? COMPUTER_USE_AUTHORIZATION_CATEGORY
+        : operation.kind || bounded(name, 80) || 'unknown',
       summary: permissionSummary(operation),
       patterns: [],
       approvalScope: 'session',

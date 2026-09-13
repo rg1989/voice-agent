@@ -3,6 +3,14 @@ import {
   clean,
   processAcpConnection,
 } from './shared.mjs'
+import { computerUseEnabled } from '../builtin-mcp.mjs'
+
+// 0 means "no timeout" in omp and is left alone. Anything shorter than the
+// computer-use gate's worst case (165 s) is raised, or the call fails mid-prompt.
+function ompMcpTimeout(configured) {
+  if (String(configured ?? '').trim() === '0') return '0'
+  return String(Math.max(Number(configured) || 0, 180_000))
+}
 
 export const genericAcpBackendDriver = {
   id: 'acp',
@@ -38,7 +46,13 @@ export const genericAcpBackendDriver = {
         command,
         args: Array.isArray(args) ? args.map(String) : [],
         cwd: directory,
-        env: baseEnvironment('acp'),
+        // omp abandons any MCP call after 30 s, and a spoken approval for
+        // computer control routinely takes longer, so the call would fail while
+        // the prompt is still up. The setting is process-wide in omp, so it is
+        // raised only when computer control is on.
+        env: baseEnvironment('acp', computerUseEnabled()
+          ? { OMP_MCP_TIMEOUT_MS: ompMcpTimeout(process.env.OMP_MCP_TIMEOUT_MS) }
+          : {}),
       }),
       externalMcp: true,
       nativeDelegation: false,

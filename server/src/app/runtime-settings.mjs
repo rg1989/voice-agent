@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync, chmodSync, existsSync, statSync, readdirSy
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { config } from '../core/config.mjs'
+import { computerUseMode } from '../core/computer-use-mode.mjs'
 
 // Runtime settings the WebUI is allowed to change: which agent does the work,
 // which folder it works in, and which voice speaks.
@@ -21,7 +22,32 @@ const CONFIG_KEYS = Object.freeze({
   summaryOnly: 'QWEN_AUDIO_VOICE_SUMMARY_ONLY',
   turnThreshold: 'QWEN_AUDIO_TURN_THRESHOLD',
   turnSilenceMs: 'QWEN_AUDIO_TURN_SILENCE_MS',
+  computerUse: 'QWEN_AUDIO_AGENT_COMPUTER_USE',
+  webTools: 'QWEN_AUDIO_WEB_TOOLS_ENABLED',
 })
+
+export const COMPUTER_USE_OPTIONS = Object.freeze([
+  {
+    id: 'per_task',
+    label: 'Ask once per task',
+    detail: 'Asks the first time a task needs your computer, then lets it work until the task ends.',
+  },
+  {
+    id: 'every_action',
+    label: 'Ask every time',
+    detail: 'Asks before every screenshot, click and keystroke.',
+  },
+  {
+    id: 'always',
+    label: 'Never ask',
+    detail: 'Uses your screen, mouse and keyboard without asking. Only if you trust every task.',
+  },
+  {
+    id: 'off',
+    label: 'Off',
+    detail: 'The assistant cannot see your screen or use your mouse and keyboard.',
+  },
+])
 
 // Voices confirmed against Alibaba's Qwen-Omni-Realtime voice list.
 export const OMNI_VOICES = Object.freeze([
@@ -116,6 +142,11 @@ export function readRuntimeSettings() {
     turnSilenceMs: clampNumber(valueOf(lines, CONFIG_KEYS.turnSilenceMs), { min: 200, max: 5000 })
       ?? TURN_DETECTION_DEFAULTS.silenceMs,
     turnDefaults: TURN_DETECTION_DEFAULTS,
+    computerUse: computerUseMode({
+      QWEN_AUDIO_AGENT_COMPUTER_USE: valueOf(lines, CONFIG_KEYS.computerUse),
+    }),
+    computerUseOptions: COMPUTER_USE_OPTIONS,
+    webTools: ['1', 'true', 'yes', 'on'].includes(valueOf(lines, CONFIG_KEYS.webTools).toLowerCase()),
   }
 }
 
@@ -190,6 +221,22 @@ export function updateRuntimeSettings(patch = {}) {
     changed.push('turnSilenceMs')
   }
 
+  if (typeof patch.computerUse === 'string') {
+    if (!COMPUTER_USE_OPTIONS.some(option => option.id === patch.computerUse)) {
+      throw Object.assign(
+        new Error(`unknown computer use mode: ${patch.computerUse}`),
+        { status: 400 },
+      )
+    }
+    lines = applyValues(lines, { [CONFIG_KEYS.computerUse]: patch.computerUse })
+    changed.push('computerUse')
+  }
+
+  if (typeof patch.webTools === 'boolean') {
+    lines = applyValues(lines, { [CONFIG_KEYS.webTools]: patch.webTools ? 'true' : 'false' })
+    changed.push('webTools')
+  }
+
   if (typeof patch.summaryOnly === 'boolean') {
     lines = applyValues(lines, {
       [CONFIG_KEYS.summaryOnly]: patch.summaryOnly ? 'true' : null,
@@ -215,6 +262,8 @@ const MANAGED_ENV_KEYS = Object.freeze([
   CONFIG_KEYS.summaryOnly,
   CONFIG_KEYS.turnThreshold,
   CONFIG_KEYS.turnSilenceMs,
+  CONFIG_KEYS.computerUse,
+  CONFIG_KEYS.webTools,
   'ACP_COMMAND',
   'ACP_ARGS',
   'ACP_LABEL',

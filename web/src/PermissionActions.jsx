@@ -7,9 +7,13 @@ const decisions = [
 ]
 
 export default function PermissionActions({ authorization, onRespond }) {
+  // Consent to computer control lasts for one task; there is no "always".
+  const available = authorization.category === 'computer_use'
+    ? decisions.filter(({ value }) => value !== 'always')
+    : decisions
   return <div className="permission-controls" aria-busy={Boolean(authorization.submitting)}>
     <div className="permission-actions" role="group" aria-label={t('权限决定')}>
-      {decisions.map(({ value, label, title }) => <button
+      {available.map(({ value, label, title }) => <button
         key={value}
         type="button"
         className={`permission-${value}`}

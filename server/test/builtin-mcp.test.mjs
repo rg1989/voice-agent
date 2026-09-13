@@ -1,61 +1,33 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  builtinMcpServers,
-  computerUseMcpServer,
-  createBuiltinMcpLifecycle,
+  computerUseBinPath,
+  computerUseEnabled,
+  computerUseMode,
+  createComputerUseLifecycle,
 } from '../src/backend/adapters/acp/builtin-mcp.mjs'
 
-test('computer-use MCP server resolves as stdio descriptor by default', () => {
-  const descriptor = computerUseMcpServer({})
-  assert.ok(descriptor, 'expected descriptor when package is installed')
-  assert.equal(descriptor.name, 'open-computer-use')
-  assert.equal(descriptor.type, 'stdio')
-  assert.equal(descriptor.command, process.execPath)
-  assert.equal(descriptor.args.length, 2)
-  assert.match(descriptor.args[0], /open-computer-use/)
-  assert.equal(descriptor.args[1], 'mcp')
-  assert.deepEqual(descriptor.env, [
-    { name: 'ELECTRON_RUN_AS_NODE', value: '1' },
-  ])
-})
-
-test('computer-use MCP server can be disabled via environment', () => {
-  for (const value of ['false', 'off', '0', 'no', 'disabled', 'OFF']) {
-    assert.equal(
-      computerUseMcpServer({ QWEN_AUDIO_AGENT_COMPUTER_USE: value }),
-      null,
-      `expected null for ${value}`,
-    )
-  }
-})
-
-test('computer-use MCP server stays enabled for truthy values', () => {
+test('computer control is on unless explicitly disabled', () => {
+  assert.equal(computerUseEnabled({}), true)
   for (const value of ['', 'true', 'on', '1', 'yes']) {
-    assert.ok(
-      computerUseMcpServer({ QWEN_AUDIO_AGENT_COMPUTER_USE: value }),
-      `expected descriptor for "${value}"`,
-    )
+    assert.equal(computerUseEnabled({ QWEN_AUDIO_AGENT_COMPUTER_USE: value }), true, value)
+  }
+  for (const value of ['false', 'off', '0', 'no', 'disabled', 'OFF']) {
+    assert.equal(computerUseEnabled({ QWEN_AUDIO_AGENT_COMPUTER_USE: value }), false, value)
   }
 })
 
-test('builtinMcpServers returns descriptor list and filters disabled entries', () => {
-  const enabled = builtinMcpServers({})
-  assert.equal(enabled.length, 1)
-  assert.equal(enabled[0].name, 'open-computer-use')
-
-  const disabled = builtinMcpServers({ QWEN_AUDIO_AGENT_COMPUTER_USE: 'off' })
-  assert.deepEqual(disabled, [])
+test('resolves the installed open-computer-use launcher', () => {
+  assert.match(computerUseBinPath(), /open-computer-use/)
 })
 
-test('cleans only app-agents created after the builtin MCP lifecycle starts', async () => {
-  const servers = builtinMcpServers({})
+test('cleans only app-agents created after the computer-use lifecycle starts', async () => {
   let time = 0
   const processes = [
     { pid: 10, command: '/pkg/OpenComputerUse __open-computer-use-app-agent /tmp/old.sock' },
   ]
   const signals = []
-  const lifecycle = createBuiltinMcpLifecycle(servers, {
+  const lifecycle = createComputerUseLifecycle(true, {
     platform: 'darwin',
     discoveryMs: 100,
     now: () => time,
@@ -81,11 +53,10 @@ test('cleans only app-agents created after the builtin MCP lifecycle starts', as
 })
 
 test('preserves a new app-agent while another MCP process is active', async () => {
-  const servers = builtinMcpServers({})
   let time = 0
   const processes = []
   const signals = []
-  const lifecycle = createBuiltinMcpLifecycle(servers, {
+  const lifecycle = createComputerUseLifecycle(true, {
     platform: 'darwin',
     discoveryMs: 50,
     now: () => time,
@@ -108,7 +79,7 @@ test('preserves a new app-agent while another MCP process is active', async () =
   assert.deepEqual(signals, [])
 })
 
-test('builtin MCP lifecycle is a no-op off macOS or without the managed server', async () => {
+test('computer-use lifecycle is a no-op off macOS or when disabled', async () => {
   let listed = false
   const options = {
     listProcesses: () => {
@@ -116,13 +87,18 @@ test('builtin MCP lifecycle is a no-op off macOS or without the managed server',
       return []
     },
   }
-  await createBuiltinMcpLifecycle(builtinMcpServers({}), {
-    ...options,
-    platform: 'linux',
-  }).close()
-  await createBuiltinMcpLifecycle([], {
-    ...options,
-    platform: 'darwin',
-  }).close()
+  await createComputerUseLifecycle(true, { ...options, platform: 'linux' }).close()
+  await createComputerUseLifecycle(false, { ...options, platform: 'darwin' }).close()
   assert.equal(listed, false)
+})
+
+test('reads the computer-control mode and keeps the older on/off spellings working', () => {
+  const mode = value => computerUseMode({ QWEN_AUDIO_AGENT_COMPUTER_USE: value })
+  assert.equal(computerUseMode({}), 'per_task')
+  for (const value of ['true', 'on', '1', 'yes', 'per_task']) assert.equal(mode(value), 'per_task', value)
+  assert.equal(mode('every_action'), 'every_action')
+  assert.equal(mode('ALWAYS'), 'always')
+  assert.equal(mode('off'), 'off')
+  // A typo must never turn into "never ask".
+  assert.equal(mode('alwayz'), 'per_task')
 })

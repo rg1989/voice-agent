@@ -125,6 +125,23 @@ export default function SettingsPanel({ onClose, setOutputVoice }) {
           </div>
         </section>
 
+        {settings.computerUseOptions && <section className="settings-group">
+          <h4>{t('电脑控制')}</h4>
+          <p className="settings-hint">{t('后台 Agent 能不能看你的屏幕、用你的鼠标和键盘，以及什么时候要先问你。改完会重启 Gateway。')}</p>
+          <div className="settings-options">
+            {settings.computerUseOptions.map(option => <button
+              key={option.id}
+              type="button"
+              className={`settings-option${settings.computerUse === option.id ? ' selected' : ''}`}
+              disabled={disabled}
+              onClick={() => save({ computerUse: option.id })}
+            >
+              <b>{option.label}</b>
+              <small>{option.detail}</small>
+            </button>)}
+          </div>
+        </section>}
+
         <section className="settings-group">
           <h4>{t('工作目录')}</h4>
           <p className="settings-hint">{t('后台 Agent 在哪个文件夹里干活，也就是它看得到的上下文。')}</p>
@@ -221,6 +238,18 @@ export default function SettingsPanel({ onClose, setOutputVoice }) {
             <span>
               <b>{t('只把一句话摘要发给语音模型')}</b>
               <small>{t('后台 Agent 的完整回复默认会发给语音服务商，好让它念出来。开启后只转发后台自己写的 VOICE: 那一行；没写就只说一句：完成了，结果在屏幕上。')}</small>
+            </span>
+          </label>
+          <label className="settings-toggle">
+            <input
+              type="checkbox"
+              checked={Boolean(settings.webTools)}
+              disabled={disabled}
+              onChange={event => save({ webTools: event.target.checked })}
+            />
+            <span>
+              <b>{t('让语音模型自己联网搜索')}</b>
+              <small>{t('默认关闭：查资料都交给后台 Agent，它会读原文、交叉核实。打开后语音模型会自己用搜索引擎，更快但更浅，搜索词会发给搜索服务商。改完会重启 Gateway。')}</small>
             </span>
           </label>
         </section>

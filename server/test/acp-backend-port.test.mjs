@@ -58,7 +58,7 @@ function adapter(options = {}) {
     protocol: 'acp',
     directory: '/project',
     sessionStatePath: null,
-    builtinMcp: [],
+    computerUse: null,
     profile: {
       label: 'Test ACP',
       capabilities: {},

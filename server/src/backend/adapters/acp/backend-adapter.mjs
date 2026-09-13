@@ -17,9 +17,13 @@ import { createAcpClient } from './client-factory.mjs'
 import { AcpSessionRegistry } from './session-registry.mjs'
 import { AcpSessionToolServer } from './session-tools.mjs'
 import {
-  builtinMcpServers,
-  createBuiltinMcpLifecycle,
+  computerUseBinPath,
+  computerUseEnabled,
+  computerUseMode,
+  createComputerUseLifecycle,
 } from './builtin-mcp.mjs'
+import { ComputerUseGate } from './computer-use-gate.mjs'
+import { COMPUTER_USE_AUTHORIZATION_CATEGORY } from '../../../core/work-authorization.mjs'
 import { BackendRuntimeState } from './runtime-state.mjs'
 import { KeyedSerialExecutor } from './keyed-serial-executor.mjs'
 import { PermissionBroker } from './permission-broker.mjs'
@@ -137,7 +141,8 @@ export class AcpBackendAdapter {
     readinessTimeoutMs = Math.min(timeoutMs, 60_000),
     sessionToolServer,
     nativeDelegationAdapter,
-    builtinMcp = builtinMcpServers(),
+    computerUse = computerUseEnabled() ? computerUseBinPath() : null,
+    computerUseApproval = computerUseMode(),
   } = {}) {
     this.protocol = protocol
     this.root = root
@@ -168,14 +173,26 @@ export class AcpBackendAdapter {
     })
     this.registry = new AcpSessionRegistry({ filePath: sessionStatePath })
     this.sessionToolServer = sessionToolServer || new AcpSessionToolServer()
-    // Baseline stdio MCP servers (e.g. open-computer-use) injected into every
-    // Session; backends spawn and connect to them on their own.
-    this.builtinMcp = this.profile.sessionMcp === false
-      ? []
-      : (Array.isArray(builtinMcp) ? builtinMcp : [])
-    this.builtinMcpLifecycle = !client && clientFactory === createAcpClient
-      ? createBuiltinMcpLifecycle(this.builtinMcp)
+    // Computer control goes through a Gateway-owned gate: every Session gets a
+    // loopback MCP server that asks the user once per task before forwarding to
+    // open-computer-use. Agents never see the raw server, so an Agent that does
+    // not ask for permission itself (omp) cannot drive the screen unasked.
+    const computerUseBin = this.profile.sessionMcp === false ? null : computerUse
+    this.computerUseLifecycle = !client && clientFactory === createAcpClient
+      ? createComputerUseLifecycle(Boolean(computerUseBin))
       : { markUsed() {}, close: () => Promise.resolve() }
+    this.computerUse = computerUseBin
+      && typeof this.sessionToolServer.registerServer === 'function'
+      ? new ComputerUseGate({
+          binPath: computerUseBin,
+          mode: computerUseApproval,
+          requestApproval: (session, options) => (
+            this.requestComputerUseApproval(session, options)
+          ),
+          onLaunch: () => this.computerUseLifecycle.markUsed(),
+        })
+      : null
+    this.computerUseRegistrations = new Map()
     this.permissionBroker = new PermissionBroker({
       protocol: this.protocol,
       permissionMode: this.permissionMode,
@@ -423,7 +440,6 @@ export class AcpBackendAdapter {
   }
 
   async ensureCoordinatorSession(ownerId, mcpServers = []) {
-    if (this.builtinMcp.length) this.builtinMcpLifecycle.markUsed()
     const key = coordinatorKey(ownerId, this.protocol)
     if (this.coordinatorSessions.has(key)) {
       return this.coordinatorSessions.get(key)
@@ -537,6 +553,63 @@ export class AcpBackendAdapter {
 
   async handlePermission(params, { signal, session } = {}) {
     return this.permissionBroker.request(params, { signal, session })
+  }
+
+  async requestComputerUseApproval(session, { description, signal } = {}) {
+    const result = await this.permissionBroker.request({
+      sessionId: session.sessionId,
+      toolCall: {
+        toolCallId: `computer_use_${randomUUID()}`,
+        title: 'Control your computer',
+        kind: COMPUTER_USE_AUTHORIZATION_CATEGORY,
+        rawInput: { description },
+      },
+      options: [
+        { optionId: 'allow', name: 'Allow', kind: 'allow_once' },
+        { optionId: 'reject', name: 'Deny', kind: 'reject_once' },
+      ],
+    }, { signal, session, explicit: true })
+    const outcome = result?.outcome
+    if (outcome?.outcome !== 'selected') return 'cancelled'
+    return outcome.optionId === 'allow' ? 'allowed' : 'denied'
+  }
+
+  // One token per Session. A call reads that Session's current task and prompt
+  // scope when it arrives, so it cannot be attributed to another run the same
+  // owner has in flight.
+  async computerUseFor(key) {
+    if (!this.computerUse) return { servers: [], bind() {} }
+    let entry = this.computerUseRegistrations.get(key)
+    if (!entry) {
+      const holder = { session: null }
+      const registration = await this.computerUse.register(
+        this.sessionToolServer,
+        () => holder.session,
+      )
+      entry = { holder, registration }
+      this.computerUseRegistrations.set(key, entry)
+    }
+    return {
+      servers: [entry.registration.descriptor],
+      bind: session => { entry.holder.session = session },
+    }
+  }
+
+  releaseComputerUse(key) {
+    const entry = this.computerUseRegistrations.get(key)
+    this.computerUseRegistrations.delete(key)
+    entry?.registration.release()
+  }
+
+  rekeyComputerUse(from, to) {
+    const entry = this.computerUseRegistrations.get(from)
+    if (!entry) return
+    this.computerUseRegistrations.delete(from)
+    if (this.computerUseRegistrations.has(to)) {
+      entry.registration.release()
+      return
+    }
+    this.computerUseRegistrations.set(to, entry)
   }
 
   async handleElicitation(params, { signal, session } = {}) {
@@ -754,12 +827,23 @@ export class AcpBackendAdapter {
 
   async startProjectSession(run, { prompt, title }) {
     const cwd = clean(run.cwd) || this.directory
-    const session = await this.client.newSession({
-      cwd,
-      mcpServers: this.builtinMcp,
-      ownerId: run.ownerId,
-      role: 'project',
-    })
+    const startKey = `project-start:${randomUUID()}`
+    const computerUse = await this.computerUseFor(startKey)
+    let session
+    try {
+      session = await this.client.newSession({
+        cwd,
+        mcpServers: computerUse.servers,
+        ownerId: run.ownerId,
+        role: 'project',
+      })
+    } catch (error) {
+      this.releaseComputerUse(startKey)
+      throw error
+    }
+    computerUse.bind(session)
+    // A later resume of this Session reuses the same registration.
+    this.rekeyComputerUse(startKey, `project:${session.sessionId}`)
     this.rememberProjectSession({
       ...session,
       cwd,
@@ -809,12 +893,14 @@ export class AcpBackendAdapter {
         { protocol: this.protocol },
       )
     }
+    const computerUse = await this.computerUseFor(`project:${clean(sessionId)}`)
     const session = await this.client.resumeSession(clean(sessionId), {
       cwd,
-      mcpServers: this.builtinMcp,
+      mcpServers: computerUse.servers,
       ownerId: run.ownerId,
       role: 'project',
     })
+    computerUse.bind(session)
     this.rememberProjectSession({
       ...existing,
       ...session,
@@ -978,11 +1064,17 @@ export class AcpBackendAdapter {
       ownerId,
       this.toolContext(run),
     )
+    // ponytail: one registration per owner's coordinator Session, rebound each turn,
+    // because some Agents cache the first MCP connection of a Session. A call an
+    // Agent sends after its turn ended fails the gate's scope check; a per-turn
+    // token would be stricter but breaks those Agents.
+    const computerUse = await this.computerUseFor(`coordinator:${key}`)
     const mcpServers = [
       ...(registration ? [registration.descriptor] : []),
-      ...this.builtinMcp,
+      ...computerUse.servers,
     ]
     const session = await this.ensureCoordinatorSession(ownerId, mcpServers)
+    computerUse.bind(session)
     const permissionScopeId = `prompt_${randomUUID()}`
     run.sessionId = session.sessionId
     run.cwd = clean(session.cwd) || this.directory
@@ -1237,12 +1329,21 @@ export class AcpBackendAdapter {
     onEvent,
   } = {}) {
     await this.start({ signal })
-    const session = await this.client.newSession({
-      cwd: this.directory,
-      mcpServers: this.builtinMcp,
-      ownerId,
-      role: 'utility',
-    })
+    const computerUseKey = `utility:${randomUUID()}`
+    const computerUse = await this.computerUseFor(computerUseKey)
+    let session
+    try {
+      session = await this.client.newSession({
+        cwd: this.directory,
+        mcpServers: computerUse.servers,
+        ownerId,
+        role: 'utility',
+      })
+    } catch (error) {
+      this.releaseComputerUse(computerUseKey)
+      throw error
+    }
+    computerUse.bind(session)
     const permissionScopeId = `prompt_${randomUUID()}`
     const publish = event => this.publishWorkEvent(event, {
       taskId,
@@ -1308,6 +1409,7 @@ export class AcpBackendAdapter {
       if (session.permissionScopeId === permissionScopeId) {
         session.permissionScopeId = null
       }
+      this.releaseComputerUse(computerUseKey)
       if (typeof this.client.closeSession === 'function') {
         await this.client.closeSession(session.sessionId).catch(() => {})
       }
@@ -1641,11 +1743,15 @@ export class AcpBackendAdapter {
     await Promise.allSettled(registrations.map(registration => (
       Promise.resolve().then(() => registration.release())
     )))
+    for (const key of [...this.computerUseRegistrations.keys()]) {
+      this.releaseComputerUse(key)
+    }
+    await this.computerUse?.close()
     await Promise.allSettled([
       this.sessionToolServer.close(),
       this.client.close(),
     ])
-    await this.builtinMcpLifecycle.close()
+    await this.computerUseLifecycle.close()
     this.workEventListeners.clear()
     this.runtimeState.stopped()
   }

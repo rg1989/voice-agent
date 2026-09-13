@@ -74,7 +74,7 @@ function createFixture({ hold }) {
       protocol: 'acp',
       directory: '/project',
       sessionStatePath: null,
-      builtinMcp: [],
+      computerUse: null,
       client,
       profile: {
         label: 'Test ACP',

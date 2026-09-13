@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { PERMISSION_DECISIONS, backendPermissionDecision } from '../../../../shared/permission-decisions.mjs'
 import { inputPartRef } from '../../../../shared/input-parts.mjs'
 import { BackendEventType } from '../../core/backend-events.mjs'
+import { isExplicitAuthorization } from '../../core/work-authorization.mjs'
 import { isTaskCancellable } from '../../task/task-state.mjs'
 import { toolFailure as failure } from './tool-result.mjs'
 import { config } from '../../core/config.mjs'
@@ -641,6 +642,27 @@ export class AgentTaskRuntime {
         )
         return
       }
+      // Consent to computer control must name the request it answers. Without an
+      // ID, a "yes" meant for an earlier request could bind to a computer-control
+      // request that arrived in the meantime and was never heard.
+      if (!requestedPermissionId && isExplicitAuthorization(selected.permission)) {
+        await this.host.sendOutput(
+          callId,
+          failure(
+            'permission_id_required',
+            '电脑控制的授权必须写明它自己的 permission_id。',
+            { permissions: [{
+              permission_id: authorizationId,
+              task_id: pendingTask.id,
+              operation: selected.permission.summary,
+            }] },
+          ),
+          turnId,
+          null,
+          responseOptions('电脑控制的授权尚未生效。只有当用户确实是在回答这项电脑控制请求时，才带上它的 permission_id 重新提交；不确定时先向用户确认，不要猜测。'),
+        )
+        return
+      }
       if (!this.host.respondAuthorization) {
         await this.host.sendOutput(
           callId,
@@ -656,15 +678,19 @@ export class AgentTaskRuntime {
         this.host.sessionId,
         decision,
         pendingTask.id,
+        authorizationId,
       )
       // Receipt-based: the local policy takes effect immediately and the backend
       // round trip must not delay the spoken confirmation. Task approval also
       // settles permissions that arrived concurrently for this same task.
-      const permissions = decision !== 'reject'
+      // Consent to computer control settles only itself, and no other "allow"
+      // settles it along the way.
+      const permissions = decision !== 'reject' && !isExplicitAuthorization(selected.permission)
         ? [...this.host.pendingBackendPermissions.entries()]
             .filter(([id, entry]) => (
               entry.taskId === pendingTask.id
               && !this.host.submittedBackendPermissions.has(id)
+              && !isExplicitAuthorization(entry.permission)
             ))
             .map(([id, entry]) => ({ id, taskId: entry.taskId }))
         : [{ id: authorizationId, taskId: pendingTask.id }]

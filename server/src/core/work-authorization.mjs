@@ -10,6 +10,15 @@ export const AuthorizationStatus = Object.freeze({
 const KNOWN_STATUSES = new Set(Object.values(AuthorizationStatus))
 const KNOWN_APPROVAL_SCOPES = new Set(['once', 'session', 'persistent'])
 
+// Controlling the user's computer is asked about on its own. A "task" or
+// "always" grant collected for other requests must not cover it, and the
+// consent it receives must not spill over onto other requests either.
+export const COMPUTER_USE_AUTHORIZATION_CATEGORY = 'computer_use'
+
+export function isExplicitAuthorization(permission) {
+  return permission?.category === COMPUTER_USE_AUTHORIZATION_CATEGORY
+}
+
 function clean(value, max = 300) {
   return String(value || '').replaceAll('\u0000', '').replace(/\s+/g, ' ')
     .trim().slice(0, max)

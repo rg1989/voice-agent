@@ -1,29 +1,25 @@
-// Built-in MCP servers injected into every backend Agent Session.
+// open-computer-use: the computer-control runtime offered to backend Agents.
 //
-// ACP treats stdio as the baseline MCP transport: descriptors passed via
-// `session/new` are spawned and connected by the backend Agent itself, so
-// the Gateway only needs to describe where the server lives. Verified
-// against Qoder and OpenCode — both spawn the stdio process directly.
+// The Gateway now runs it itself and gives Agents a gated proxy instead of the
+// raw server (computer-use-gate.mjs). When Agents spawned it directly, nothing
+// sat between a model deciding to click and the click: omp only asks permission
+// for bash/edit/delete/move, so screen control ran without asking anyone.
 //
 // open-computer-use ships three platform runtimes in one npm package and
-// provides click/type/screenshot-style tools, giving every backend a
-// computer-use baseline even when the user has not configured one.
+// provides click/type/screenshot-style tools.
 import { createRequire } from 'node:module'
 import { execFileSync } from 'node:child_process'
 import { dirname, join, sep } from 'node:path'
 import { existsSync } from 'node:fs'
+import { computerUseMode } from '../../../core/computer-use-mode.mjs'
+
+export { computerUseMode }
 
 const require = createRequire(import.meta.url)
-const lifecycleMetadata = Symbol('qwen-audio-agent.builtin-mcp-lifecycle')
 const APP_AGENT_MARKER = '__open-computer-use-app-agent'
 const APP_AGENT_DISCOVERY_MS = 500
 const APP_AGENT_POLL_MS = 50
 
-function settingEnabled(value, fallback = true) {
-  const normalized = String(value ?? '').trim().toLowerCase()
-  if (!normalized) return fallback
-  return !['false', 'off', '0', 'no', 'disabled'].includes(normalized)
-}
 
 // Inside Electron, require.resolve returns paths within the asar archive.
 // Backend Agents are external processes that cannot read archived files, so
@@ -50,30 +46,12 @@ function resolvePackageBin(specifier, binName) {
   }
 }
 
-export function computerUseMcpServer(env = process.env) {
-  if (!settingEnabled(env.QWEN_AUDIO_AGENT_COMPUTER_USE)) return null
-  const binPath = resolvePackageBin(
-    '@qwen-code/open-computer-use',
-    'open-computer-use',
-  )
-  if (!binPath) return null
-  const descriptor = {
-    name: 'open-computer-use',
-    type: 'stdio',
-    command: process.execPath,
-    args: [binPath, 'mcp'],
-    // The bin is a Node script; when the Gateway runs inside Electron the
-    // backend inherits execPath, so force plain Node semantics.
-    env: [{ name: 'ELECTRON_RUN_AS_NODE', value: '1' }],
-  }
-  Object.defineProperty(descriptor, lifecycleMetadata, {
-    value: { kind: 'open-computer-use' },
-  })
-  return descriptor
+export function computerUseEnabled(env = process.env) {
+  return computerUseMode(env) !== 'off'
 }
 
-export function builtinMcpServers(env = process.env) {
-  return [computerUseMcpServer(env)].filter(Boolean)
+export function computerUseBinPath() {
+  return resolvePackageBin('@qwen-code/open-computer-use', 'open-computer-use')
 }
 
 function runningProcesses() {
@@ -102,7 +80,7 @@ function isActiveMcp(item) {
   )
 }
 
-export function createBuiltinMcpLifecycle(servers, {
+export function createComputerUseLifecycle(enabled, {
   platform = process.platform,
   listProcesses = runningProcesses,
   killImpl = process.kill,
@@ -110,10 +88,7 @@ export function createBuiltinMcpLifecycle(servers, {
   discoveryMs = APP_AGENT_DISCOVERY_MS,
   now = Date.now,
 } = {}) {
-  const managesOpenComputerUse = Array.isArray(servers) && servers.some(
-    server => server?.[lifecycleMetadata]?.kind === 'open-computer-use',
-  )
-  if (!managesOpenComputerUse || platform !== 'darwin') {
+  if (!enabled || platform !== 'darwin') {
     return {
       markUsed() {},
       close: () => Promise.resolve(),

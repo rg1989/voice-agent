@@ -1,4 +1,4 @@
-import { PERMISSION_DECISIONS } from '../core/work-authorization.mjs'
+import { PERMISSION_DECISIONS, isExplicitAuthorization } from '../core/work-authorization.mjs'
 import { BackendEventType } from '../core/backend-events.mjs'
 import { isTaskActive } from './task-state.mjs'
 
@@ -63,9 +63,14 @@ export class PermissionPolicy {
     return `${key(ownerId, sessionId)}\u0000${String(taskId || id || '')}`
   }
 
-  applyDecision(ownerId, sessionId, decision, taskId) {
+  applyDecision(ownerId, sessionId, decision, taskId, authorizationId = '') {
     if (!PERMISSION_DECISIONS.includes(decision) || (decision === 'task' && !taskId)) {
       throw new TypeError('Invalid permission decision or missing task ID')
+    }
+    // Consent to computer control answers that one request. It sets no task or
+    // session grant; the computer-use gate remembers it for its task itself.
+    if (isExplicitAuthorization(this.pending.get(authorizationId)?.event?.permission)) {
+      return () => {}
     }
     const sessionKey = key(ownerId, sessionId)
     const taskKey = this.taskKey({ ownerId, sessionId, taskId })
@@ -119,7 +124,11 @@ export class PermissionPolicy {
     if (!this.active(context)) return
     const entry = { ...context, event, onEvent, respondAuthorization, published: false }
     this.pending.set(id, entry)
-    if (respondAuthorization && this.shouldAutoAllow(context.ownerId, context.sessionId, context.taskId)) {
+    if (
+      respondAuthorization
+      && !isExplicitAuthorization(event.permission)
+      && this.shouldAutoAllow(context.ownerId, context.sessionId, context.taskId)
+    ) {
       this.approve(id, entry)
     } else {
       entry.published = true
@@ -147,7 +156,8 @@ export class PermissionPolicy {
   flushPending(ownerId, sessionId) {
     for (const [id, entry] of this.pending) {
       if (entry.ownerId === ownerId && entry.sessionId === sessionId
-        && entry.respondAuthorization && this.shouldAutoAllow(ownerId, sessionId, entry.taskId)) {
+        && entry.respondAuthorization && !isExplicitAuthorization(entry.event?.permission)
+        && this.shouldAutoAllow(ownerId, sessionId, entry.taskId)) {
         this.approve(id, entry)
       }
     }

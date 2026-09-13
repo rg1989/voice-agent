@@ -147,3 +147,33 @@ test('automatic delivery failure publishes the actual request once and does not 
   assert.deepEqual(events, [request('auth-failure')])
   policy.close()
 })
+
+const screenRequest = id => ({
+  type: 'backend.permission.requested',
+  permission: { id, status: 'pending', category: 'computer_use' },
+})
+
+test('computer control is always asked: task and session grants never cover it', async () => {
+  const policy = new PermissionPolicy()
+  const events = []
+  const approvals = []
+  const respond = async (taskId, id) => { approvals.push(id) }
+  policy.applyDecision('owner', 'voice', 'task', 'task_1')
+  policy.applyDecision('owner', 'voice', 'always')
+  policy.forwardBackendEvent(context, screenRequest('auth-screen'), event => events.push(event), respond)
+  policy.flushPending('owner', 'voice')
+  await tick()
+  assert.deepEqual(approvals, [])
+  assert.deepEqual(events, [screenRequest('auth-screen')])
+  policy.close()
+})
+
+test('an answer to computer control grants nothing for other requests', () => {
+  const policy = new PermissionPolicy()
+  policy.forwardBackendEvent(context, screenRequest('auth-screen'), () => {}, async () => {})
+  policy.applyDecision('owner', 'voice', 'always', 'task_1', 'auth-screen')
+  policy.applyDecision('owner', 'voice', 'task', 'task_1', 'auth-screen')
+  assert.equal(policy.mode('owner', 'voice'), 'ask')
+  assert.equal(policy.shouldAutoAllow('owner', 'voice', 'task_1'), false)
+  policy.close()
+})

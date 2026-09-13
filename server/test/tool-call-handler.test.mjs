@@ -2486,3 +2486,25 @@ test('notes: unavailable without a notes store', async () => {
   })
   assert.equal(kit.outputs.at(-1)[1].error_code, 'notes_unavailable')
 })
+
+test('consent to computer control has to name the request it answers', async () => {
+  const calls = []
+  const kit = await permissionHarness({
+    answer: '允许', permissionPolicy: new PermissionPolicy(),
+    respondPermission: async (id, decision) => calls.push([id, decision]),
+  })
+  kit.onPermission({
+    id: 'auth-screen', status: 'pending', summary: 'Control your computer', category: 'computer_use',
+  })
+  await kit.handler.handle({
+    call_id: 'unnamed', name: 'respond_permission', arguments: '{"decision":"task"}',
+  })
+  assert.equal(kit.outputs.at(-1)[1].error_code, 'permission_id_required')
+  assert.equal(calls.length, 0)
+  await kit.handler.handle({
+    call_id: 'named', name: 'respond_permission',
+    arguments: '{"permission_id":"auth-screen","decision":"task"}',
+  })
+  assert.deepEqual(calls, [['auth-screen', 'once']])
+  await kit.finish()
+})

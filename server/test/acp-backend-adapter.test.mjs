@@ -24,6 +24,25 @@ function fakeToolServer() {
     releaseCalls: 0,
     registrations: [],
     registerOptions: [],
+    serverRegistrations: [],
+    async registerServer(options) {
+      const registration = {
+        options,
+        released: false,
+        descriptor: {
+          type: 'http',
+          name: options.name,
+          url: `http://127.0.0.1${options.path}/${this.serverRegistrations.length + 1}`,
+          headers: [],
+        },
+        release: () => {
+          registration.released = true
+          return true
+        },
+      }
+      this.serverRegistrations.push(registration)
+      return registration
+    },
     async register(context, options = {}) {
       this.context = context
       this.registerCalls += 1
@@ -2461,14 +2480,7 @@ test('reports recent project Session updates with Gateway delegation status', as
   await adapter.close()
 })
 
-test('injects builtin MCP servers into coordinator and project sessions', async () => {
-  const builtin = {
-    name: 'open-computer-use',
-    type: 'stdio',
-    command: process.execPath,
-    args: ['/repo/node_modules/open-computer-use/bin', 'mcp'],
-    env: [{ name: 'ELECTRON_RUN_AS_NODE', value: '1' }],
-  }
+test('gives every Session computer control only through the Gateway gate', async () => {
   const tools = fakeToolServer()
   const sessionMcp = new Map()
   let prompted = false
@@ -2509,7 +2521,7 @@ test('injects builtin MCP servers into coordinator and project sessions', async 
     directory: '/coordinator',
     client,
     sessionToolServer: tools,
-    builtinMcp: [builtin],
+    computerUse: '/repo/node_modules/@qwen-code/open-computer-use/bin/open-computer-use',
   })
 
   const result = await adapter.coordinatorTurn('first turn', {
@@ -2518,19 +2530,24 @@ test('injects builtin MCP servers into coordinator and project sessions', async 
   })
   await result.run.delegation?.promise
 
+  // No Session ever receives the raw open-computer-use server.
+  const everything = [...sessionMcp.values()].flat()
+  assert.equal(everything.some(server => server.type === 'stdio' || server.command), false)
+
   const coordinator = sessionMcp.get('coordinator-session')
-  assert.equal(coordinator.length, 2)
-  assert.equal(coordinator[0].type, 'http')
-  assert.equal(coordinator[1], builtin)
-  assert.equal(coordinator[1].type, 'stdio')
+  assert.deepEqual(coordinator.map(server => server.name), ['test', 'computer-use'])
+  assert.ok(coordinator.every(server => server.type === 'http'))
 
   const project = sessionMcp.get('project-session')
-  assert.deepEqual(project, [builtin])
-  assert.equal(project[0].type, 'stdio')
+  assert.deepEqual(project.map(server => server.name), ['computer-use'])
+  assert.match(new URL(project[0].url).pathname, /^\/computer-use/)
+
   await adapter.close()
+  assert.ok(tools.serverRegistrations.length >= 2)
+  assert.ok(tools.serverRegistrations.every(registration => registration.released))
 })
 
-test('builtinMcp defaults keep sessions working when disabled', async () => {
+test('offers no computer control when it is disabled', async () => {
   const tools = fakeToolServer()
   const sessionMcp = new Map()
   const client = {
@@ -2558,7 +2575,7 @@ test('builtinMcp defaults keep sessions working when disabled', async () => {
     directory: '/coordinator',
     client,
     sessionToolServer: tools,
-    builtinMcp: [],
+    computerUse: null,
   })
 
   await adapter.coordinatorTurn('turn', {
@@ -2568,5 +2585,41 @@ test('builtinMcp defaults keep sessions working when disabled', async () => {
   const coordinator = sessionMcp.get('coordinator-session')
   assert.equal(coordinator.length, 1)
   assert.equal(coordinator[0].type, 'http')
+  assert.equal(tools.serverRegistrations.length, 0)
+  await adapter.close()
+})
+
+test('asks the user before computer control even in full permission mode', async () => {
+  const events = []
+  const adapter = new AcpBackendAdapter({
+    protocol: 'acp',
+    directory: '/project',
+    sessionStatePath: null,
+    permissionMode: 'full',
+    computerUse: null,
+    client: { async close() {} },
+    sessionToolServer: fakeToolServer(),
+    profile: {
+      label: 'Test ACP',
+      capabilities: {},
+      acpConnection: { kind: 'process' },
+      externalMcp: false,
+      sessionMcp: false,
+    },
+  })
+  const decision = adapter.requestComputerUseApproval({
+    sessionId: 'acp-1',
+    ownerId: 'owner-one',
+    coordinationRunId: 'work-one',
+    permissionScopeId: 'prompt_1',
+    onEvent: event => events.push(event),
+  }, { description: 'The assistant wants to look at Safari.' })
+
+  assert.equal(events.length, 1)
+  const { permission } = events[0]
+  assert.equal(permission.category, 'computer_use')
+  assert.match(permission.summary, /Control your computer/)
+  await adapter.resolveAuthorization(permission.id, 'reject', { ownerId: 'owner-one' })
+  assert.equal(await decision, 'denied')
   await adapter.close()
 })

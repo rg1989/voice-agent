@@ -38,3 +38,47 @@ test('the short public ID resolves opaque ACP option IDs and duplicate decisions
   assert.deepEqual(broker.respond(id, 'reject', { ownerId: 'owner' }), resolved)
   assert.equal(events.filter(event => event.type === 'backend.permission.resolved').length, 1)
 })
+
+test('a Gateway-raised explicit request reaches the user even in full permission mode', async () => {
+  const broker = new PermissionBroker({ protocol: 'test', permissionMode: 'full' })
+  const events = []
+  const session = { ownerId: 'owner', onEvent: event => events.push(event) }
+  const params = {
+    toolCall: { title: 'Control your computer', kind: 'computer_use' },
+    options: [
+      { kind: 'allow_once', optionId: 'allow' },
+      { kind: 'reject_once', optionId: 'reject' },
+    ],
+  }
+  // Full mode still approves ordinary requests on its own.
+  assert.equal((await broker.request(params, { session })).outcome.optionId, 'allow')
+  assert.equal(events.length, 0)
+
+  const pending = broker.request(params, { session, explicit: true })
+  assert.equal(events.length, 1)
+  assert.equal(events[0].permission.category, 'computer_use')
+  broker.respond(events[0].permission.id, 'reject', { ownerId: 'owner' })
+  assert.deepEqual(await pending, { outcome: { outcome: 'selected', optionId: 'reject' } })
+})
+
+test('running the open-computer-use runtime through bash is asked about as computer control', async () => {
+  const broker = new PermissionBroker({ protocol: 'test', permissionMode: 'full' })
+  const events = []
+  const pending = broker.request({
+    toolCall: {
+      title: 'bash',
+      kind: 'execute',
+      rawInput: {
+        command: 'node node_modules/@qwen-code/open-computer-use/bin/open-computer-use call click {}',
+      },
+    },
+    options: [
+      { kind: 'allow_once', optionId: 'allow' },
+      { kind: 'reject_once', optionId: 'reject' },
+    ],
+  }, { session: { ownerId: 'owner', onEvent: event => events.push(event) } })
+  assert.equal(events.length, 1)
+  assert.equal(events[0].permission.category, 'computer_use')
+  broker.respond(events[0].permission.id, 'reject', { ownerId: 'owner' })
+  assert.deepEqual(await pending, { outcome: { outcome: 'selected', optionId: 'reject' } })
+})

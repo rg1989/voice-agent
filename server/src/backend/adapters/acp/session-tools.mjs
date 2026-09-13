@@ -180,6 +180,7 @@ export class AcpSessionToolServer {
     await this.start()
     const token = randomUUID()
     this.contexts.set(token, {
+      path: '/mcp',
       context,
       instructions: String(instructions || '').trim(),
     })
@@ -210,15 +211,36 @@ export class AcpSessionToolServer {
     }
   }
 
+  // A second kind of registration: the caller builds the MCP Server for each
+  // request (a low-level Server that passes tool schemas and image results
+  // through), on its own path so its tools never mix with the Session tools.
+  async registerServer({ name, path, createServer }) {
+    await this.start()
+    const token = randomUUID()
+    this.contexts.set(token, { path, createServer })
+    return {
+      descriptor: {
+        type: 'http',
+        name,
+        url: `http://${this.host}:${this.port}${path}`,
+        headers: [{
+          name: 'Authorization',
+          value: `Bearer ${token}`,
+        }],
+      },
+      release: () => this.contexts.delete(token),
+    }
+  }
+
   async handleRequest(req, res) {
     const url = new URL(req.url || '/', `http://${this.host}`)
     const authorization = String(req.headers.authorization || '')
     const token = authorization.match(/^Bearer ([^\s]+)$/i)?.[1] || ''
     const registration = this.contexts.get(token)
-    const context = registration?.context
     if (
-      url.pathname !== '/mcp'
-      || !context
+      !registration
+      || url.pathname !== registration.path
+      || (!registration.createServer && !registration.context)
     ) {
       res.writeHead(404)
       res.end()
@@ -236,13 +258,22 @@ export class AcpSessionToolServer {
       }))
       return
     }
-    const server = new McpServer({
-      name: ACP_SESSION_TOOL_SERVER,
-      version: '1.0.0',
-    }, registration.instructions
-      ? { instructions: registration.instructions }
-      : undefined)
-    registerTools(server, context)
+    // Aborts when the Agent's HTTP request goes away, so a call held open (for
+    // example waiting on the user) gives up instead of acting later.
+    const requestClosed = new AbortController()
+    res.once('close', () => requestClosed.abort())
+    let server
+    if (registration.createServer) {
+      server = registration.createServer({ signal: requestClosed.signal })
+    } else {
+      server = new McpServer({
+        name: ACP_SESSION_TOOL_SERVER,
+        version: '1.0.0',
+      }, registration.instructions
+        ? { instructions: registration.instructions }
+        : undefined)
+      registerTools(server, registration.context)
+    }
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
     })

@@ -204,6 +204,7 @@ export class GatewayClientCommandRuntime {
       permissionTask.sessionId,
       message.decision,
       permissionTask.id,
+      permissionId,
     )
     try {
       const permission = await this.respondAuthorization(
