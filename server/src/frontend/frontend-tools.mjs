@@ -28,6 +28,13 @@ import {
   GET_CURRENT_TIME_TOOL_NAME,
 } from './tools/features/core-tools.mjs'
 import {
+  IGNORE_INPUT_INSTRUCTIONS,
+  IGNORE_INPUT_TOOL_NAME,
+  listeningToolEntries,
+  STOP_LISTENING_TOOL_NAME,
+  wakeWordInstructions,
+} from './tools/features/listening-tools.mjs'
+import {
   NOTES_TOOL_NAME,
   personalToolEntries,
 } from './tools/features/personal-tools.mjs'
@@ -52,6 +59,7 @@ export {
   FRONTEND_RECALL_CAPABILITY,
   GET_AGENT_TASK_STATUS_TOOL_NAME,
   GET_CURRENT_TIME_TOOL_NAME,
+  IGNORE_INPUT_TOOL_NAME,
   NOTES_TOOL_NAME,
   PERMISSION_RESPONSE_CAPABILITY,
   RECALL_TOOL_NAME,
@@ -59,6 +67,7 @@ export {
   RESPOND_PERMISSION_TOOL_NAME,
   SCHEDULE_REMINDER_TOOL_NAME,
   SPAWN_THINKING_TOOL_NAME,
+  STOP_LISTENING_TOOL_NAME,
   WEB_SEARCH_TOOL_NAME,
 }
 
@@ -69,6 +78,7 @@ const featureEntries = [
   ...personalToolEntries,
   ...retrievalToolEntries,
   ...clientToolEntries,
+  ...listeningToolEntries,
   ...optionalFrontendFeatures.flatMap(feature => feature.entries),
 ]
 const entriesByName = new Map(featureEntries.map(entry => [
@@ -82,6 +92,8 @@ const toolOrder = [
   GET_AGENT_TASK_STATUS_TOOL_NAME,
   GET_CURRENT_TIME_TOOL_NAME,
   NOTES_TOOL_NAME,
+  IGNORE_INPUT_TOOL_NAME,
+  STOP_LISTENING_TOOL_NAME,
   RECALL_TOOL_NAME,
   RESPOND_PERMISSION_TOOL_NAME,
   RESPOND_AGENT_INPUT_TOOL_NAME,
@@ -171,6 +183,13 @@ export const inputRequestResponseInstructions = [
 export function buildFrontendInstructions(agentContext = {}) {
   return [
     loadFrontendPrompt(),
+    ...(frontendToolRegistry.isEnabled(IGNORE_INPUT_TOOL_NAME, agentContext)
+      ? [IGNORE_INPUT_INSTRUCTIONS]
+      : []),
+    // stop_listening is offered only in wake word mode.
+    ...(frontendToolRegistry.isEnabled(STOP_LISTENING_TOOL_NAME, agentContext)
+      ? [wakeWordInstructions(agentContext.frontend?.wakeWord)]
+      : []),
     ...optionalFrontendFeatures.filter(feature => feature.entries.some(entry => (
       frontendToolRegistry.isEnabled(entry.definition.function.name, agentContext)
     ))).map(feature => feature.instructions).filter(Boolean),

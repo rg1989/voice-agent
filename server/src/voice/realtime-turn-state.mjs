@@ -86,6 +86,11 @@ export class RealtimeTurnState {
     return this.correlation.resolve(itemId, this.current())
   }
 
+  // False for a provider item whose speech start was never seen.
+  knowsInput(itemId) {
+    return this.correlation.has(itemId)
+  }
+
   completeInput(itemId) {
     const completed = this.correlation.complete(itemId, this.current())
     if (

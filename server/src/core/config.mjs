@@ -22,6 +22,7 @@ import {
   resolveFrontendProfileConfiguration,
 } from './frontend-profile.mjs'
 import { resolveWebSearchConfiguration } from '../../../shared/web-search-configuration.mjs'
+import { liveSettingsFromEnvironment } from './live-settings.mjs'
 export { resolveWebSearchConfiguration } from '../../../shared/web-search-configuration.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -616,6 +617,9 @@ export const config = {
   voiceSummaryOnly: String(
     process.env.QWEN_AUDIO_VOICE_SUMMARY_ONLY || 'false'
   ).toLowerCase() === 'true',
+  // Boot seed for the live settings store (listeningMode, wakeWord,
+  // followUpSeconds, cameraEnabled); later changes apply without a restart.
+  ...liveSettingsFromEnvironment(process.env),
   reminderMaxPerOwner: numberSetting(
     process.env.QWEN_AUDIO_AGENT_REMINDER_MAX_PER_OWNER,
     50,

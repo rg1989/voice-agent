@@ -330,6 +330,16 @@ export class RealtimeFrontend {
     this.protocol.clearImageBuffer?.()
   }
 
+  // Forgets one conversation item, such as speech that was never meant for the
+  // assistant. A no-op for providers without item deletion.
+  deleteConversationItem(itemId) {
+    const id = String(itemId || '').trim()
+    const payload = id && this.capabilities.conversationItems
+      ? this.protocol.conversationItemDelete?.(id)
+      : null
+    if (payload) this.send(payload)
+  }
+
   sendUserText(text, context = {}, { modalities } = {}) {
     const content = String(text || '').trim()
     if (!content) return Promise.resolve()

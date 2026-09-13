@@ -25,6 +25,7 @@ const DEFAULT_TOOL_NAMES = [
   'get_agent_task_status',
   'get_current_time',
   'notes',
+  'ignore_input',
 ]
 
 function names(tools) {
@@ -68,7 +69,9 @@ test('fixed policy and tool definitions never depend on optional tool names', ()
 
 test('disabling any optional tool removes its instructions without changing fixed policy', () => {
   const context = {
-    frontend: { capabilities: ['web-search', 'url-fetch', 'knowledge', 'recall', 'memory'] },
+    frontend: {
+      capabilities: ['web-search', 'url-fetch', 'knowledge', 'recall', 'memory', 'listening.wake_word'],
+    },
     client: { actions: ['desktop.presence.enter_sleep'] },
   }
   const tools = frontendTools(context)
@@ -81,8 +84,10 @@ test('disabling any optional tool removes its instructions without changing fixe
     assert.equal(names(tools).includes(name), true)
     assert.deepEqual(frontendTools(disabledContext), tools.filter(tool => tool.function.name !== name))
     const disabledPrompt = buildFrontendInstructions(disabledContext)
-    if (name !== 'memory') assert.equal(disabledPrompt, prompt)
-    else assert.doesNotMatch(disabledPrompt, /# Personalization and memory/)
+    if (name === 'memory') assert.doesNotMatch(disabledPrompt, /# Personalization and memory/)
+    else if (name === 'ignore_input') assert.doesNotMatch(disabledPrompt, /# Input not meant for you/)
+    else if (name === 'stop_listening') assert.doesNotMatch(disabledPrompt, /# Wake word/)
+    else assert.equal(disabledPrompt, prompt)
     assert.doesNotMatch(
       `${disabledPrompt}\n${JSON.stringify(frontendTools(disabledContext))}`,
       new RegExp(`\\b${name}\\b`, 'u'),

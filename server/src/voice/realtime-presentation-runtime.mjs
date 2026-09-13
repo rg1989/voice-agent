@@ -77,6 +77,10 @@ export class RealtimePresentationRuntime {
     announcementQuietMs,
     responseContextCleanupMs,
     turnCitations = null,
+    // Called with the response context when a response has truly ended: its
+    // audio finished playing (or it had none, or it failed) and no tool
+    // follow-up response is still expected.
+    onResponseSettled = () => {},
   }) {
     this.ownerId = ownerId
     this.sessionId = sessionId
@@ -94,6 +98,7 @@ export class RealtimePresentationRuntime {
     this.announcementQuietMs = announcementQuietMs
     this.responseContextCleanupMs = responseContextCleanupMs
     this.turnCitations = turnCitations
+    this.onResponseSettled = onResponseSettled
     this.contexts = new Map()
     this.playbackTurns = new Map()
     this.lastCorrectionTurn = null
@@ -432,6 +437,10 @@ export class RealtimePresentationRuntime {
       suppressed: Boolean(context?.suppressed) || terminalToolResponse,
       failed,
     })
+    if (
+      (!context?.hasAudio || failed || context.playbackEnded)
+      && !toolFollowUpPending
+    ) this.onResponseSettled(context)
     if (guardDecision) this.#requestGuardCorrection(guardDecision, context, responseTurnId)
     this.#flushAnnouncementsSoon()
   }
@@ -590,6 +599,8 @@ export class RealtimePresentationRuntime {
     const remainsProcessing = Boolean(
       awaitsToolFollowUp(context),
     )
+    // Playback can also end before response.done; #responseDone settles then.
+    if (context?.responseDone && !remainsProcessing) this.onResponseSettled(context)
     this.send({
       type: GatewayServerEvent.VOICE_STATE,
       state: this.turns.userSpeaking
@@ -679,6 +690,8 @@ export class RealtimePresentationRuntime {
         awaitsToolFollowUp: false,
         failed: true,
       })
+      // A failed response settles too; nothing else will.
+      this.onResponseSettled(context)
     }
     this.#flushAnnouncementsSoon()
   }

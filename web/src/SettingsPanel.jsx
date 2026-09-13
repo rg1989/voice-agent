@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { t } from './i18n.js'
 import FolderPicker from './FolderPicker.jsx'
+import { RECOMMENDED_WAKE_WORD } from './listening.js'
 import {
   fetchSettings,
   saveSettings,
@@ -46,6 +47,70 @@ function TurnSlider({ label, hint, value, min, max, step, disabled, format, onCo
     />
     <small className="settings-hint">{hint}</small>
   </label>
+}
+
+function listeningModeText(option) {
+  if (option.id === 'always') return [t('一直在听'), t('麦克风听到的声音都会发给语音模型。')]
+  if (option.id === 'wake_word') return [t('唤醒词'), t('听到唤醒词之后才发给语音模型。')]
+  return [option.label, option.detail]
+}
+
+// Listening mode, wake word and follow-up window. The gateway applies these
+// live and answers restarting:false, so save() only refreshes.
+export function ListeningSettings({ settings, disabled, save }) {
+  if (!Array.isArray(settings?.listeningModes)) return null
+  const followUp = settings.followUpDefaults || {}
+  const followUpMin = Math.max(0, followUp.min ?? 0)
+  const followUpMax = Math.min(15, followUp.max ?? 15)
+  const followUpSeconds = Math.min(
+    followUpMax,
+    Math.max(followUpMin, settings.followUpSeconds ?? followUp.seconds ?? 5),
+  )
+  return <section className="settings-group">
+    <h4>{t('聆听方式')}</h4>
+    <p className="settings-hint">{t('麦克风听到的声音什么时候交给语音模型。改完立即生效，不会重启 Gateway。')}</p>
+    <div className="settings-options">
+      {settings.listeningModes.map(option => {
+        const [label, detail] = listeningModeText(option)
+        return <button
+          key={option.id}
+          type="button"
+          className={`settings-option${settings.listeningMode === option.id ? ' selected' : ''}`}
+          disabled={disabled}
+          onClick={() => save({ listeningMode: option.id })}
+        >
+          <b>{label}</b>
+          <small>{detail}</small>
+        </button>
+      })}
+    </div>
+    {settings.listeningMode === 'wake_word' && <>
+      <p className="settings-hint">{t('选一个唤醒词。')}</p>
+      <div className="settings-options">
+        {(settings.wakeWords || []).map(option => <button
+          key={option.id}
+          type="button"
+          className={`settings-option${settings.wakeWord === option.id ? ' selected' : ''}`}
+          disabled={disabled}
+          onClick={() => save({ wakeWord: option.id })}
+        >
+          <b>{option.label}</b>
+          {option.id === RECOMMENDED_WAKE_WORD && <small>{t('推荐')}</small>}
+        </button>)}
+      </div>
+      <TurnSlider
+        label={t('回答后继续听多久')}
+        hint={t('助手回答完后继续听这么久，过了就要重新说唤醒词。')}
+        value={followUpSeconds}
+        min={followUpMin}
+        max={followUpMax}
+        step={1}
+        disabled={disabled}
+        format={value => t('{count} 秒', { count: value })}
+        onCommit={value => save({ followUpSeconds: value })}
+      />
+    </>}
+  </section>
 }
 
 export default function SettingsPanel({ onClose, setOutputVoice }) {
@@ -124,6 +189,8 @@ export default function SettingsPanel({ onClose, setOutputVoice }) {
             </button>)}
           </div>
         </section>
+
+        <ListeningSettings settings={settings} disabled={disabled} save={save} />
 
         {settings.computerUseOptions && <section className="settings-group">
           <h4>{t('电脑控制')}</h4>
@@ -255,7 +322,7 @@ export default function SettingsPanel({ onClose, setOutputVoice }) {
         </section>
 
         <p className="settings-hint settings-footnote">
-          {t('除了音色，这里的每项改动都会重启 Gateway，正在进行的任务会中断。')}
+          {t('除了音色和聆听方式，这里的改动都会重启 Gateway，正在进行的任务会中断。')}
         </p>
       </>}
   </aside>

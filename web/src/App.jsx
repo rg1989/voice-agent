@@ -48,6 +48,7 @@ import useRealtimeVoice, {
   realtimeModelStatus,
   shouldClaimReleasedVoice,
 } from './realtime/useRealtimeVoice.js'
+import { shouldPlayWakeChime, wakeWordArmed, wakeWordHint } from './listening.js'
 import { requestedSessionId } from './session.js'
 import { initialVoiceEnabled } from './voice-defaults.js'
 import {
@@ -275,6 +276,7 @@ export default function App() {
   const lastWakeAtRef = useRef(0)
   const previousDesktopLifecycle = useRef('active')
   const gatewayCommandsRef = useRef(null)
+  const listeningStateRef = useRef('always')
   const sessionIdRef = useRef(sessionId)
   sessionIdRef.current = sessionId
   const spriteAnimationCue = spriteAnimationCues[0] || null
@@ -601,6 +603,13 @@ export default function App() {
         setActivity(t('待命'))
       }
     }
+    if (event.type === 'voice.listening') {
+      // Web only: the desktop orb keeps its own wake behaviour.
+      if (!desktopOrbMode && shouldPlayWakeChime(event, listeningStateRef.current)) {
+        void gatewayCommandsRef.current?.playChime?.()
+      }
+      listeningStateRef.current = event.state || listeningStateRef.current
+    }
     if (event.type === 'transcript.delta' && event.role === 'user') {
       updateUserTranscript(event)
     }
@@ -888,6 +897,13 @@ export default function App() {
     ownershipBusy: voice.ownership.state === 'busy',
     voiceState: voice.visualState || voice.state,
     tasksWorking: desktopHasWorkingTasks,
+  })
+  // Web only: while armed the gateway waits for the wake word, so the idle orb
+  // and status say so.
+  const wakeArmed = !desktopOrbMode && wakeWordArmed({
+    listeningState: voice.listeningState,
+    voiceEnabled,
+    visualState: orbVisualState,
   })
   const authorizationTask = agentTasks.find(
     task => task.authorization?.status === 'pending',
@@ -1394,7 +1410,8 @@ export default function App() {
             : <small>{t('模型能力信息不可用')}</small>}
         </div>
         <div className="status">
-          <i className={orbVisualState} /><span>{labelFor(orbVisualState)}</span>
+          <i className={wakeArmed ? 'armed' : orbVisualState} />
+          <span>{wakeArmed ? t('等待唤醒词') : labelFor(orbVisualState)}</span>
         </div>
         {!desktopOrbMode && <SpendReadout />}
       </div>
@@ -1489,14 +1506,14 @@ export default function App() {
       />}
       <div className="hero">
         <button
-          className={`orb ${orbVisualState}`}
+          className={`orb ${orbVisualState}${wakeArmed ? ' armed' : ''}`}
           onClick={handleVoiceOrbClick}
           aria-label={t('语音交互')}
         >
           <span />
         </button>
         <p>VOICE FRONTEND</p>
-        <small>{voice.error || activity}</small>
+        <small>{voice.error || (wakeArmed ? wakeWordHint(voice.listeningWakeWord) : activity)}</small>
       </div>
 
       <div

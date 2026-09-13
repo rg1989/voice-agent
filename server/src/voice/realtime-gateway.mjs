@@ -46,6 +46,14 @@ import { VisualInputBuffer } from './visual-input-buffer.mjs'
 import { RealtimeRecoveryContext } from './realtime-recovery-context.mjs'
 import { SleepController } from './sleep-controller.mjs'
 import {
+  createWakeWordDetectorLazily,
+  isStopListeningPhrase,
+  isWakeWordOnly,
+  ListeningGate,
+  ListeningState,
+} from './listening-gate.mjs'
+import { LiveSettings } from '../core/live-settings.mjs'
+import {
   isResponseActivityEvent,
   realtimeResponseId,
 } from './response-lifecycle.mjs'
@@ -212,6 +220,8 @@ export function attachRealtimeGateway(server, {
   taskAnnouncementFactory = createTaskAnnouncementRuntime,
   clientCommandRuntime = null,
   clientEventRouter = null,
+  liveSettings = new LiveSettings(config),
+  wakeWordDetectorFactory = createWakeWordDetectorLazily,
 }) {
   const wss = new WebSocketServer({
     noServer: true,
@@ -343,6 +353,15 @@ export function attachRealtimeGateway(server, {
     let sleeping = false
     let waking = false
     let sleepController
+    // Turns ended by a stop phrase, refused (a bare or false wake word) or cut
+    // off by re-arming: any response for them is cancelled unheard.
+    // turnId -> reason.
+    const silencedTurns = new Map()
+    const silenceReason = turnId => (turnId && silencedTurns.get(turnId)) || ''
+    // Provider events and client output of turns whose wake word is not
+    // confirmed yet; released or dropped once the check ends.
+    let heldWakeEvents = []
+    let heldWakeOutput = []
     const clientActionCapabilities = new Set()
     const clientActions = new ClientActionPort({
       send: event => send(ws, event),
@@ -408,6 +427,14 @@ export function attachRealtimeGateway(server, {
     const frontendRecentMessages = () => realtimeRecoveryContext.project(
       conversationSync.frontendContext({ ownerId, sessionId }),
     )
+    // Only the WebUI shows the armed state and plays the wake chime. Other
+    // clients (the desktop orb with its own wake word, CLI, mobile) keep
+    // listening as before.
+    const listeningSettings = () => (
+      descriptor.type === 'web'
+        ? liveSettings.get()
+        : { ...liveSettings.get(), listeningMode: 'always' }
+    )
     const getAgentContext = () => ({
       client: clientContext,
       frontend: {
@@ -421,6 +448,7 @@ export function attachRealtimeGateway(server, {
           sessionDigests,
           permissionPending: hasPendingBackendPermission(),
           inputPending: hasPendingBackendInput(),
+          liveSettings: listeningSettings(),
         }),
         tools: frontendSourceToolDefinitions(frontendToolSources),
       },
@@ -643,6 +671,7 @@ export function attachRealtimeGateway(server, {
           provider: createdFrontend.provider.key,
           providerLabel: createdFrontend.provider.label,
         })
+        send(ws, { type: GatewayServerEvent.VOICE_LISTENING, ...listeningGate.status() })
         sleepController.recordActivity()
         progressAnnouncements.flush()
         if (resumedFromSleep) {
@@ -685,6 +714,41 @@ export function attachRealtimeGateway(server, {
     visualInput = new VisualInputBuffer({
       onFrame: image => realtimeSession.appendImage(image),
     })
+    const inputSampleRate = () => Number(realtimeSession.provider()?.inputSampleRate) || 16_000
+    const listeningGate = new ListeningGate({
+      settings: liveSettings.get(),
+      createDetector: wakeWordDetectorFactory,
+      cacheDirectory: config.cacheDirectory,
+      passAudio: audio => {
+        // A detection that lands late must not reach (or reopen) the provider
+        // for a client that is asleep, suspended or no longer owns the mic.
+        if (
+          sleeping
+          || !inputEnabled
+          || inputSuspended
+          || !activeVoiceClients.isActive(ownerId, voiceClient)
+        ) return
+        realtimeSession.appendAudio(audio)
+        observeSessionAudio({ type: 'chunk', audio, sampleRate: inputSampleRate() })
+      },
+      getSampleRate: inputSampleRate,
+      isBusy: () => (
+        turns.userSpeaking
+        || announcementWindow.isBlocked()
+        || announcementWindow.isPlaying()
+      ),
+      isUserSpeaking: () => turns.userSpeaking,
+      onWakeCheckEnd: (verified, turnIds) => endWakeHold(verified, turnIds),
+      onChange: status => {
+        send(ws, { type: GatewayServerEvent.VOICE_LISTENING, ...status })
+        if (status.state === ListeningState.ARMED) endSpeechCutByArm()
+      },
+      onError: error => send(ws, {
+        type: GatewayServerEvent.ERROR,
+        message: `Wake word detection is unavailable: ${error?.message || error}`,
+      }),
+      logger: connectionLogger,
+    })
     const voiceClient = {
       ws,
       descriptor,
@@ -698,6 +762,7 @@ export function attachRealtimeGateway(server, {
         if (suspend) {
           // Buffered audio predates the suspension and is no longer wanted.
           realtimeSession.clearPendingAudio()
+          listeningGate.stop('input_suspended')
           clearVisualInput()
           sleepController?.disable()
           realtimeSession.cancelResponse()
@@ -726,6 +791,7 @@ export function attachRealtimeGateway(server, {
         sleepController?.disable()
         inputEnabled = false
         outputEnabled = false
+        listeningGate.stop('released')
         clearVisualInput()
         announcementWindow.reset()
         announcements.pause()
@@ -843,6 +909,8 @@ export function attachRealtimeGateway(server, {
         })
       },
       presenceController,
+      listeningGate,
+      liveSettings: { get: listeningSettings },
       onAgentActivity: activity => send(ws, {
         type: GatewayServerEvent.AGENT_ACTIVITY,
         ...activity,
@@ -893,6 +961,8 @@ export function attachRealtimeGateway(server, {
     const expectResponseFor = context => {
       clearResponseCandidate()
       responseTurnCandidate = context
+      // A refused turn may never get a response; do not reconnect over it.
+      if (silenceReason(context.turnId)) return
       responseStartWatchdog = setTimeout(() => {
         if (responseTurnCandidate !== context) return
         clearResponseCandidate()
@@ -906,6 +976,8 @@ export function attachRealtimeGateway(server, {
           turnId: context.turnId,
           origin: 'model',
         })
+        // No response will settle this turn; let the awake window run out.
+        listeningGate.responseSettled()
         realtimeSession.reconnect().catch(error => send(ws, {
           type: 'error',
           message: error.message,
@@ -913,6 +985,108 @@ export function attachRealtimeGateway(server, {
       }, realtimeSession.frontend?.provider.responseStartTimeoutMs
         ?? RESPONSE_START_WATCHDOG_MS)
       responseStartWatchdog.unref?.()
+    }
+
+    // Cancel what a turn is saying and anything it would still say.
+    const silenceTurn = (turnId, reason) => {
+      if (!turnId) return
+      silencedTurns.set(turnId, reason)
+      if (silencedTurns.size > 50) silencedTurns.delete(silencedTurns.keys().next().value)
+      clearResponseCandidate()
+      for (const [id, context] of presentationRuntime.entries()) {
+        if (
+          context.turnId === turnId
+          && context.origin !== 'announcement'
+          && !context.suppressed
+        ) presentationRuntime.cancelPlayback(id, { reason })
+      }
+      realtimeSession.cancelResponse()
+      send(ws, { type: GatewayServerEvent.PLAYBACK_CLEAR, reason })
+      // No response may have started yet; do not leave the client processing.
+      if (!turns.userSpeaking) {
+        send(ws, {
+          type: GatewayServerEvent.VOICE_STATE,
+          state: 'idle',
+          turnId,
+          origin: 'model',
+        })
+      }
+    }
+
+    // Refused speech is also removed from the provider's conversation, so a
+    // later answer cannot repeat it.
+    const FORGOTTEN_REASONS = new Set(['wake_word_unverified', 'wake_word_only', 'listening_armed'])
+    const forgetItem = itemId => realtimeSession.frontend?.deleteConversationItem?.(itemId)
+
+    // Re-armed while the provider still hears speech (TV talk after a false
+    // wake, speech after a stop phrase): end that turn here, and send the
+    // trailing silence the provider would otherwise never get, so the next
+    // wake starts a fresh turn instead of joining this one.
+    const endSpeechCutByArm = () => {
+      if (!turns.userSpeaking) return
+      const turnId = turns.turnId
+      turns.endSpeech()
+      announcementWindow.endSpeech()
+      announcementWindow.interrupt()
+      silenceTurn(turnId, 'listening_armed')
+      if (
+        sleeping
+        || !inputEnabled
+        || inputSuspended
+        || !activeVoiceClients.isActive(ownerId, voiceClient)
+        || !realtimeSession.ready
+      ) return
+      const silenceMs = Math.max(1_500, (Number(config.turnDetectionSilenceMs) || 0) + 500)
+      const silence = Buffer.alloc(Math.round(inputSampleRate() * 2 * 0.1)).toString('base64')
+      for (let sentMs = 0; sentMs < silenceMs; sentMs += 100) realtimeSession.appendAudio(silence)
+    }
+
+    // A wake check ended: an unconfirmed wake's turns are refused, then held
+    // output and events are replayed (and dropped where refused).
+    const endWakeHold = (verified, turnIds = []) => {
+      if (!verified) {
+        for (const turnId of turnIds) {
+          if (!silenceReason(turnId)) silenceTurn(turnId, 'wake_word_unverified')
+        }
+      }
+      if (!heldWakeEvents.length && !heldWakeOutput.length) return
+      // After the current event, so a released transcript comes first.
+      queueMicrotask(() => {
+        const output = heldWakeOutput
+        const events = heldWakeEvents
+        heldWakeOutput = []
+        heldWakeEvents = []
+        for (const event of output) presentationSend(event)
+        for (const event of events) handleEvent(event)
+      })
+    }
+
+    const HELD_WAKE_OUTPUT = new Set([
+      GatewayServerEvent.RESPONSE_STARTED,
+      GatewayServerEvent.AUDIO_DELTA,
+      GatewayServerEvent.TRANSCRIPT_DELTA,
+      GatewayServerEvent.TRANSCRIPT_FINAL,
+      GatewayServerEvent.AUDIO_DONE,
+    ])
+    const presentationSend = event => {
+      if (HELD_WAKE_OUTPUT.has(event.type) && event.turnId) {
+        // Nothing is heard before the wake word is confirmed.
+        if (listeningGate.awaitsWakeCheck(event.turnId)) {
+          heldWakeOutput.push(event)
+          return
+        }
+        if (silenceReason(event.turnId)) return
+      }
+      send(ws, event)
+    }
+    const inputsSend = event => {
+      // A refused turn shows no further activity.
+      if (
+        (event.type === GatewayServerEvent.VOICE_STATE
+          || event.type === GatewayServerEvent.TRANSCRIPT_DELTA)
+        && silenceReason(event.turnId)
+      ) return
+      send(ws, event)
     }
 
     const inputs = new RealtimeInputRuntime({
@@ -924,7 +1098,7 @@ export function attachRealtimeGateway(server, {
       conversationSync,
       announcementWindow,
       announcements,
-      send: event => send(ws, event),
+      send: inputsSend,
       getFrontend: () => realtimeSession.frontend,
       ensureFrontend: () => realtimeSession.ensure(),
       clearResponseCandidate,
@@ -933,11 +1107,64 @@ export function attachRealtimeGateway(server, {
       ensurePermissionResponseFor,
       reportFrontendError,
       onSpeechStarted: fields => {
+        listeningGate.speechStarted(fields.turnId)
         observeSessionAudio({ type: 'speech_started', ...fields })
+        // Speech the provider reports after the gate re-armed (audio sent just
+        // before): end it once the input runtime has opened the turn.
+        queueMicrotask(() => {
+          if (listeningGate.state === ListeningState.ARMED) endSpeechCutByArm()
+        })
+      },
+      transcriptRejection: ({ turnId, itemId, transcript }) => {
+        const refusal = silenceReason(turnId)
+        if (FORGOTTEN_REASONS.has(refusal)) {
+          forgetItem(itemId)
+          return refusal
+        }
+        if (!transcript) {
+          if (!listeningGate.awaitsWakeCheck(turnId)) return ''
+          // Speech with no words cannot confirm the wake word.
+          silenceTurn(turnId, 'wake_word_unverified')
+          forgetItem(itemId)
+          return 'wake_word_unverified'
+        }
+        if (
+          listeningGate.wakeWordMode
+          && isWakeWordOnly(listeningGate.settings.wakeWord, transcript)
+        ) {
+          // Only the wake word: nothing to answer, keep listening for the
+          // request.
+          connectionLogger.info('wake_word.bare', { turnId })
+          silenceTurn(turnId, 'wake_word_only')
+          forgetItem(itemId)
+          listeningGate.verifyTranscript(turnId, transcript)
+          listeningGate.keepListening()
+          return 'wake_word_only'
+        }
+        if (listeningGate.verifyTranscript(turnId, transcript)) return ''
+        // A false wake: the request never named the wake word. It is neither
+        // answered nor remembered, and the gate waits for the wake word again.
+        connectionLogger.info('wake_word.unverified', { turnId })
+        silenceTurn(turnId, 'wake_word_unverified')
+        forgetItem(itemId)
+        listeningGate.arm('unverified')
+        return 'wake_word_unverified'
+      },
+      onTranscriptCompleted: ({ turnId, transcript }) => {
+        if (!listeningGate.wakeWordMode || !isStopListeningPhrase(transcript)) return
+        // A bare stop phrase gets no answer: cancel what is already coming and
+        // go back to waiting for the wake word.
+        silenceTurn(turnId, 'stop_listening')
+        listeningGate.stop('stop')
       },
       onSpeechStopped: fields => {
         connectionLogger.info('realtime.provider.speech_stopped', fields)
         observeSessionAudio({ type: 'speech_stopped', ...fields })
+        // No response follows an invalid turn; let the awake window run out
+        // once the speech state has ended.
+        if (fields.reason === 'turn_invalid') {
+          queueMicrotask(() => listeningGate.responseSettled())
+        }
       },
     })
 
@@ -949,7 +1176,7 @@ export function attachRealtimeGateway(server, {
       announcementWindow,
       announcements,
       toolCalls,
-      send: event => send(ws, event),
+      send: presentationSend,
       getFrontend: () => realtimeSession.frontend,
       getOutputEnabled: () => outputEnabled,
       getNonVoiceClient: () => nonVoiceClient,
@@ -958,6 +1185,9 @@ export function attachRealtimeGateway(server, {
       announcementQuietMs: config.announcementQuietMs,
       responseContextCleanupMs: RESPONSE_CONTEXT_CLEANUP_MS,
       turnCitations,
+      onResponseSettled: context => {
+        if (!silenceReason(context?.turnId)) listeningGate.responseSettled()
+      },
     })
 
     const queueNotification = task => {
@@ -1090,7 +1320,7 @@ export function attachRealtimeGateway(server, {
     })
 
     const handleEvent = event => {
-      if (event.type === 'response.done') {
+      if (event.type === 'response.done' && !event.__wakeHeld) {
         usageMeter?.record(event, meteredModel(realtimeSession))
       }
       // The only authoritative live signal about the free quota: with "Free
@@ -1102,7 +1332,49 @@ export function attachRealtimeGateway(server, {
         usageMeter?.markQuotaExhausted(meteredModel(realtimeSession))
       }
       if (isSleepActivityEvent(event)) sleepController?.recordActivity()
-      if (isResponseActivityEvent(event)) presentationRuntime.begin(event)
+      if (isResponseActivityEvent(event)) {
+        const responseContext = presentationRuntime.begin(event)
+        const responseTurnId = responseContext?.origin === 'announcement'
+          ? ''
+          : responseContext?.turnId || ''
+        const refusal = silenceReason(responseTurnId)
+        if (!refusal) listeningGate.responseStarted()
+        if (refusal && !responseContext.suppressed) {
+          presentationRuntime.cancelPlayback(realtimeResponseId(event), { reason: refusal })
+          realtimeSession.cancelResponse()
+        }
+        if (FORGOTTEN_REASONS.has(refusal) && event.type === 'response.done') {
+          for (const item of event.response?.output || []) {
+            if (item?.type === 'message') forgetItem(item.id)
+          }
+        }
+        // Tool calls and completion wait for the wake word check, so nothing
+        // runs (or reaches the brain) for a wake that turns out to be false.
+        if (
+          listeningGate.awaitsWakeCheck(responseTurnId)
+          && (event.type === 'response.function_call_arguments.done'
+            || event.type === 'response.done')
+        ) {
+          event.__wakeHeld = true
+          heldWakeEvents.push(event)
+          return
+        }
+      }
+      // The provider can end speech it never announced. After a wake, or on
+      // top of a refused turn, that is new speech: open a turn for it first,
+      // so it gets its own wake word check instead of the old turn's fate.
+      if (
+        (event.type === 'input_audio_buffer.speech_stopped'
+          || event.type === 'input_audio_buffer.committed')
+        && event.item_id
+        && !turns.knowsInput(event.item_id)
+        && (listeningGate.wakeCheck || silenceReason(turns.turnId))
+      ) {
+        inputs.handleProviderEvent({
+          type: 'input_audio_buffer.speech_started',
+          item_id: event.item_id,
+        })
+      }
       if (inputs.handleProviderEvent(event)) return
       if (event.type === 'response.function_call_arguments.done') {
         const id = realtimeResponseId(event)
@@ -1113,6 +1385,11 @@ export function attachRealtimeGateway(server, {
           callId: event.call_id || event.item?.call_id || '',
           toolName: event.name || event.item?.name || '',
           turnId: callContext.turnId || '',
+        }
+        if (silenceReason(callContext.turnId)) {
+          // No tool work for a refused turn or one ended by a stop phrase.
+          toolCalls.closeStaleCall(callFields.callId, callContext.turnId).catch(() => {})
+          return
         }
         connectionLogger.info('realtime.tool_call.received', callFields)
         presentationRuntime.markFunctionCall(id)
@@ -1236,6 +1513,7 @@ export function attachRealtimeGateway(server, {
       clearVisualInput()
       sleeping = true
       waking = false
+      listeningGate.stop('sleeping')
       announcementWindow.reset()
       progressAnnouncements.clear()
       send(ws, {
@@ -1295,6 +1573,18 @@ export function attachRealtimeGateway(server, {
     })
 
     send(ws, { type: GatewayServerEvent.VOICE_STATE, state: 'idle' })
+    send(ws, { type: GatewayServerEvent.VOICE_LISTENING, ...listeningGate.status() })
+    const onLiveSettingsChange = (next, previous) => {
+      listeningGate.applySettings(listeningSettings())
+      // Tool availability (stop_listening, camera) and the wake word the model
+      // is told about follow these settings.
+      if (
+        next.listeningMode !== previous.listeningMode
+        || next.wakeWord !== previous.wakeWord
+        || next.cameraEnabled !== previous.cameraEnabled
+      ) realtimeSession.updateAgentContext(getAgentContext())
+    }
+    liveSettings.on('change', onLiveSettingsChange)
     // A client connecting mid-suspension has to learn about it before it opens
     // a microphone.
     if (inputSuspended) {
@@ -1666,6 +1956,7 @@ export function attachRealtimeGateway(server, {
       if (event.type === GatewayClientEvent.CONNECT) {
         descriptor = clientDescriptor(event)
         voiceClient.descriptor = descriptor
+        listeningGate.applySettings(listeningSettings())
         connectionLogger.info('voice_client.configured', {
           clientType: descriptor.type,
           clientLabel: descriptor.label,
@@ -1808,12 +2099,8 @@ export function attachRealtimeGateway(server, {
         ) {
           return
         }
-        realtimeSession.appendAudio(event.audio)
-        observeSessionAudio({
-          type: 'chunk',
-          audio: event.audio,
-          sampleRate: Number(realtimeSession.provider()?.inputSampleRate) || 16_000,
-        })
+        // While armed for the wake word, audio stops here.
+        listeningGate.append(event.audio)
       } else if (event.type === GatewayClientEvent.IMAGE_APPEND) {
         if (
           sleeping
@@ -1891,6 +2178,7 @@ export function attachRealtimeGateway(server, {
       } else if (event.type === GatewayClientEvent.MUTE) {
         clearVisualInput()
         releaseVoiceClient()
+        listeningGate.stop('released')
         sleeping = false
         waking = false
         presenceController.wake()
@@ -1902,6 +2190,7 @@ export function attachRealtimeGateway(server, {
       } else if (event.type === GatewayClientEvent.INPUT_MUTE) {
         inputEnabled = false
         realtimeSession.clearPendingAudio()
+        listeningGate.stop('input_muted')
         clearVisualInput()
       } else if (event.type === GatewayClientEvent.SLEEP) {
         requestExplicitSleep('client')
@@ -1951,6 +2240,8 @@ export function attachRealtimeGateway(server, {
       permissionRetryTimer = null
       sleepController?.close()
       presenceController.close()
+      liveSettings.off('change', onLiveSettingsChange)
+      listeningGate.close()
       realtimeSession.close()
       observeSessionAudio({ type: 'session_ended' })
       observers.emit('onSessionClosed', { ownerId, sessionId, logger: connectionLogger })

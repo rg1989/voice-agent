@@ -13,6 +13,8 @@ export function createGatewayClientState({
     voiceReady: false,
     voiceState: 'idle',
     wakeWordActive: false,
+    listeningState: 'always',
+    listeningWakeWord: '',
     ownership: { ...DEFAULT_OWNERSHIP },
     currentTurnId: '',
   }
@@ -80,6 +82,13 @@ export function reduceGatewayClientState(current, event) {
       return {
         ...state,
         wakeWordActive: event.state === 'enabled',
+      }
+
+    case GatewayServerEvent.VOICE_LISTENING:
+      return {
+        ...state,
+        listeningState: event.state || state.listeningState,
+        listeningWakeWord: event.wakeWord || state.listeningWakeWord,
       }
 
     case GatewayServerEvent.VOICE_OWNERSHIP:

@@ -47,6 +47,9 @@ export class RealtimeInputRuntime {
     reportFrontendError,
     onSpeechStarted = () => {},
     onSpeechStopped = () => {},
+    onTranscriptCompleted = () => {},
+    // Returns a reason to refuse a completed voice transcript, or ''.
+    transcriptRejection = () => '',
     createInputTurnId = () => `text_${randomUUID().replaceAll('-', '')}`,
   }) {
     this.ownerId = ownerId
@@ -67,6 +70,8 @@ export class RealtimeInputRuntime {
     this.reportFrontendError = reportFrontendError
     this.onSpeechStarted = onSpeechStarted
     this.onSpeechStopped = onSpeechStopped
+    this.onTranscriptCompleted = onTranscriptCompleted
+    this.transcriptRejection = transcriptRejection
     this.createInputTurnId = createInputTurnId
   }
 
@@ -95,10 +100,16 @@ export class RealtimeInputRuntime {
     } else if (event.type === 'conversation.item.input_audio_transcription.failed') {
       const failedInput = this.turns.completeInput(event.item_id)
       if (failedInput.duplicate) return true
+      const rejection = this.transcriptRejection({
+        turnId: failedInput.context?.turnId || '',
+        itemId: event.item_id,
+        transcript: '',
+      })
       this.send({
         type: GatewayServerEvent.TRANSCRIPT_DISCARD,
         role: 'user',
         turnId: failedInput.context?.turnId,
+        ...(rejection ? { reason: rejection } : {}),
       })
     }
     return true
@@ -215,14 +226,37 @@ export class RealtimeInputRuntime {
     ) return
     const transcript = String(event.transcript || '').trim()
     if (!transcript) {
+      // An empty transcript can still be refused (a wake with no words).
+      const rejection = this.transcriptRejection({
+        turnId: transcriptTurn.turnId,
+        itemId: event.item_id,
+        transcript,
+      })
       this.send({
         type: GatewayServerEvent.TRANSCRIPT_DISCARD,
         role: 'user',
         turnId: transcriptTurn.turnId,
+        ...(rejection ? { reason: rejection } : {}),
       })
       return
     }
     this.turns.commit(transcriptTurn)
+    // A refused transcript (e.g. after a false wake word) is neither recorded
+    // nor shown; the committed turn still lets late responses be matched.
+    const rejection = this.transcriptRejection({
+      turnId: transcriptTurn.turnId,
+      itemId: event.item_id,
+      transcript,
+    })
+    if (rejection) {
+      this.send({
+        type: GatewayServerEvent.TRANSCRIPT_DISCARD,
+        role: 'user',
+        turnId: transcriptTurn.turnId,
+        reason: rejection,
+      })
+      return
+    }
     this.transcripts.record(transcriptTurn.turnId, transcript)
     if (this.shouldEnsurePermissionResponse(transcriptTurn)) {
       this.ensurePermissionResponseFor(transcriptTurn)
@@ -245,6 +279,7 @@ export class RealtimeInputRuntime {
       content: transcript,
       turnId: transcriptTurn.turnId,
     })
+    this.onTranscriptCompleted({ turnId: transcriptTurn.turnId, transcript })
   }
 
   submit(event) {

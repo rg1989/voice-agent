@@ -104,6 +104,12 @@ export const gaRealtimeProtocol = Object.freeze({
     type: 'response.cancel',
   }),
 
+  // Removes one item from the provider's conversation context.
+  conversationItemDelete: itemId => ({
+    type: 'conversation.item.delete',
+    item_id: itemId,
+  }),
+
   userTextItem: text => ({
     type: 'message',
     role: 'user',

@@ -1,8 +1,10 @@
 import {
   CANCEL_AGENT_TASK_TOOL_NAME,
   ENTER_SLEEP_TOOL_NAME,
+  IGNORE_INPUT_TOOL_NAME,
   RESPOND_PERMISSION_TOOL_NAME,
   SPAWN_THINKING_TOOL_NAME,
+  STOP_LISTENING_TOOL_NAME,
   frontendToolRegistry,
 } from '../frontend-tools.mjs'
 import { buildFrontendToolContext } from './frontend-tool-context.mjs'
@@ -10,6 +12,7 @@ import { optionalFrontendFeatures } from '../optional-features.mjs'
 import { agentTaskToolHandlers } from './features/agent-task-tools.mjs'
 import { clientToolHandlers } from './features/client-tools.mjs'
 import { coreToolHandlers } from './features/core-tools.mjs'
+import { listeningToolHandlers } from './features/listening-tools.mjs'
 import { personalToolHandlers } from './features/personal-tools.mjs'
 import { retrievalToolHandlers } from './features/retrieval-tools.mjs'
 import { scheduleToolHandlers } from './features/schedule-tools.mjs'
@@ -73,6 +76,8 @@ function needsToolResultSummary(toolName, args) {
     RESPOND_PERMISSION_TOOL_NAME,
     CANCEL_AGENT_TASK_TOOL_NAME,
     ENTER_SLEEP_TOOL_NAME,
+    IGNORE_INPUT_TOOL_NAME,
+    STOP_LISTENING_TOOL_NAME,
   ].includes(toolName)
 }
 
@@ -98,6 +103,8 @@ export class ToolCallHandler {
     onToolResultReady = () => {},
     onToolCallDebug = () => {},
     presenceController = null,
+    listeningGate = null,
+    liveSettings = null,
     onAgentActivity = () => {},
     inputAssets = null,
     frontendRetrieval = null,
@@ -127,6 +134,8 @@ export class ToolCallHandler {
     this.onToolResultReady = onToolResultReady
     this.onToolCallDebug = onToolCallDebug
     this.presenceController = presenceController
+    this.listeningGate = listeningGate
+    this.liveSettings = liveSettings
     this.onAgentActivity = onAgentActivity
     this.inputAssets = inputAssets
     this.frontendRetrieval = frontendRetrieval
@@ -146,6 +155,7 @@ export class ToolCallHandler {
       ...personalToolHandlers(this),
       ...retrievalToolHandlers(this),
       ...clientToolHandlers(this),
+      ...listeningToolHandlers(this),
       ...Object.assign({}, ...optionalFrontendFeatures.map(feature => feature.handlers(this))),
     })
     this.processedCalls = new Set()
@@ -550,6 +560,7 @@ export class ToolCallHandler {
             && Boolean(this.agentTaskRuntime.permissionReceipt(args.permission_id, turnId))
           ),
           inputPending: this.hasPendingBackendInput(),
+          liveSettings: this.liveSettings?.get(),
         }),
       })
       if (execution.handled && !execution.executed) {

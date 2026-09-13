@@ -26,8 +26,10 @@ import {
   readRuntimeSettings,
   updateRuntimeSettings,
   scheduleRestart,
+  settingsNeedRestart,
   listFolders,
 } from './runtime-settings.mjs'
+import { LiveSettings } from '../core/live-settings.mjs'
 import {
   GatewayAccessManager,
   GatewayDeviceRegistry,
@@ -701,6 +703,10 @@ app.get('/api/input', (req, res) => {
 // Runtime settings the WebUI may change: the backend agent, its working
 // folder, and the voice. All three are read at Gateway start, so applying a
 // change writes config.env and restarts.
+// Listening and camera settings are the exception: open voice connections
+// subscribe to this store and apply them live.
+const liveSettings = new LiveSettings(config)
+
 app.get('/api/settings', (req, res) => {
   res.setHeader('cache-control', 'no-store')
   res.json(readRuntimeSettings())
@@ -727,10 +733,11 @@ app.post('/api/settings', (req, res) => {
     return res.json({ changed: [], restarting: false, settings: readRuntimeSettings() })
   }
   const settings = readRuntimeSettings()
+  liveSettings.update(settings)
   // The voice applies live over session.output_voice.update, so persisting it
   // is all the server has to do; restarting would drop the conversation for
   // no reason. Brain and folder are read at startup and still need one.
-  if (result.changed.every(key => key === 'voice')) {
+  if (!settingsNeedRestart(result.changed)) {
     return res.json({ changed: result.changed, restarting: false, settings })
   }
   let restarting = false
@@ -1019,6 +1026,7 @@ realtimeGateway = attachRealtimeGateway(server, {
   taskAnnouncementFactory,
   clientCommandRuntime: runtimeCommands,
   clientEventRouter: gatewayEventRouter,
+  liveSettings,
   taskManager,
   conversationSync,
   config,

@@ -27,6 +27,7 @@ const FRONTEND_TOOL_NAMES = [
   'get_agent_task_status',
   'get_current_time',
   'notes',
+  'ignore_input',
 ]
 
 test('both realtime schemas omit unavailable tools and keep frontend-only reminders', () => {

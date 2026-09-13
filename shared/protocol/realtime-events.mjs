@@ -30,6 +30,9 @@ export const GatewayServerEvent = Object.freeze({
   VOICE_OWNERSHIP: 'voice.ownership',
   VOICE_DEACTIVATED: 'voice.deactivated',
   VOICE_SLEEP: 'voice.sleep',
+  // Listening gate for the wake-word mode: always, armed (waiting for the
+  // wake word, no audio forwarded) or awake.
+  VOICE_LISTENING: 'voice.listening',
   TURN_STARTED: 'turn.started',
   PLAYBACK_CLEAR: 'playback.clear',
   // Commands a client to stop and resume audio capture outright, so an

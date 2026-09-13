@@ -4,6 +4,7 @@ import {
   SPAWN_THINKING_TOOL_NAME,
 } from './features/agent-task-tools.mjs'
 import { FRONTEND_RECALL_CAPABILITY } from './features/retrieval-tools.mjs'
+import { WAKE_WORD_LISTENING_CAPABILITY } from './features/listening-tools.mjs'
 import { optionalFrontendFeatures } from '../optional-features.mjs'
 
 // Use the same availability projection for model schemas and tool dispatch.
@@ -18,6 +19,7 @@ export function buildFrontendToolContext({
   sessionDigests = null,
   permissionPending = false,
   inputPending = false,
+  liveSettings = null,
 } = {}) {
   const backendConfigured = backendAvailability?.snapshot()?.configured !== false
   return {
@@ -34,6 +36,10 @@ export function buildFrontendToolContext({
       ...(sessionDigests ? [FRONTEND_RECALL_CAPABILITY] : []),
       ...(permissionPending ? [PERMISSION_RESPONSE_CAPABILITY] : []),
       ...(inputPending ? [BACKEND_INPUT_RESPONSE_CAPABILITY] : []),
+      ...(liveSettings?.listeningMode === 'wake_word' ? [WAKE_WORD_LISTENING_CAPABILITY] : []),
     ])],
+    ...(liveSettings?.listeningMode === 'wake_word' && liveSettings.wakeWord
+      ? { wakeWord: liveSettings.wakeWord }
+      : {}),
   }
 }

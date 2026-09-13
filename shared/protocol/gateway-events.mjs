@@ -244,6 +244,11 @@ const GatewayVoicePayloadSchemas = Object.freeze({
   [GatewayServerEvent.VOICE_SLEEP]: z.object({
     state: z.enum(['preparing', 'enabled', 'sleeping', 'detected', 'awake', 'disabled']),
   }).passthrough(),
+  [GatewayServerEvent.VOICE_LISTENING]: z.object({
+    state: z.enum(['always', 'armed', 'awake']),
+    reason: z.string().optional(),
+    wakeWord: z.string().optional(),
+  }).passthrough(),
   [GatewayServerEvent.TURN_STARTED]: z.object({
     turnId: z.string().min(1),
   }).passthrough(),

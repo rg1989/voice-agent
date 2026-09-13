@@ -4,6 +4,13 @@ import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { backendWorkspaceEnvironmentKeys, config } from '../core/config.mjs'
 import { computerUseMode } from '../core/computer-use-mode.mjs'
+import {
+  FOLLOW_UP_SECONDS_RANGE,
+  LIVE_SETTING_KEYS,
+  LIVE_SETTINGS_DEFAULTS,
+  LIVE_SETTINGS_ENV_KEYS,
+  liveSettingsFromEnvironment,
+} from '../core/live-settings.mjs'
 
 // Runtime settings the WebUI is allowed to change: which agent does the work,
 // which folder it works in, and which voice speaks.
@@ -24,6 +31,38 @@ const CONFIG_KEYS = Object.freeze({
   turnSilenceMs: 'QWEN_AUDIO_TURN_SILENCE_MS',
   computerUse: 'QWEN_AUDIO_AGENT_COMPUTER_USE',
   webTools: 'QWEN_AUDIO_WEB_TOOLS_ENABLED',
+  ...LIVE_SETTINGS_ENV_KEYS,
+})
+
+// Keys an open voice connection applies itself, so saving them needs no restart.
+const LIVE_KEYS = new Set(['voice', ...LIVE_SETTING_KEYS])
+
+export function settingsNeedRestart(changed = []) {
+  return changed.some(key => !LIVE_KEYS.has(key))
+}
+
+export const LISTENING_MODE_OPTIONS = Object.freeze([
+  {
+    id: 'always',
+    label: 'Always listening',
+    detail: 'Everything the microphone hears goes to the voice model.',
+  },
+  {
+    id: 'wake_word',
+    label: 'Wake word',
+    detail: 'Nothing is sent to the voice model until the wake word is heard.',
+  },
+])
+
+export const WAKE_WORD_OPTIONS = Object.freeze([
+  { id: 'hey_jarvis', label: 'Hey Jarvis' },
+  { id: 'alexa', label: 'Alexa' },
+  { id: 'hey_mycroft', label: 'Hey Mycroft' },
+])
+
+export const FOLLOW_UP_DEFAULTS = Object.freeze({
+  seconds: LIVE_SETTINGS_DEFAULTS.followUpSeconds,
+  ...FOLLOW_UP_SECONDS_RANGE,
 })
 
 export const COMPUTER_USE_OPTIONS = Object.freeze([
@@ -130,6 +169,9 @@ export function readRuntimeSettings() {
   const protocol = valueOf(lines, CONFIG_KEYS.brain)
   const label = valueOf(lines, 'ACP_LABEL')
   const brain = protocol === 'acp' && /oh my pi/i.test(label) ? 'omp' : (protocol || 'none')
+  const live = liveSettingsFromEnvironment(Object.fromEntries(
+    Object.values(LIVE_SETTINGS_ENV_KEYS).map(key => [key, valueOf(lines, key)]),
+  ))
   return {
     brain,
     brains: BRAINS.filter(entry => entry.id !== 'omp' || ompCommand()),
@@ -147,6 +189,13 @@ export function readRuntimeSettings() {
     }),
     computerUseOptions: COMPUTER_USE_OPTIONS,
     webTools: ['1', 'true', 'yes', 'on'].includes(valueOf(lines, CONFIG_KEYS.webTools).toLowerCase()),
+    listeningMode: live.listeningMode,
+    listeningModes: LISTENING_MODE_OPTIONS,
+    wakeWord: live.wakeWord,
+    wakeWords: WAKE_WORD_OPTIONS,
+    followUpSeconds: live.followUpSeconds,
+    followUpDefaults: FOLLOW_UP_DEFAULTS,
+    cameraEnabled: live.cameraEnabled,
   }
 }
 
@@ -244,6 +293,41 @@ export function updateRuntimeSettings(patch = {}) {
     changed.push('summaryOnly')
   }
 
+  if (typeof patch.listeningMode === 'string') {
+    if (!LISTENING_MODE_OPTIONS.some(option => option.id === patch.listeningMode)) {
+      throw Object.assign(
+        new Error(`unknown listening mode: ${patch.listeningMode}`),
+        { status: 400 },
+      )
+    }
+    lines = applyValues(lines, { [CONFIG_KEYS.listeningMode]: patch.listeningMode })
+    changed.push('listeningMode')
+  }
+
+  if (typeof patch.wakeWord === 'string') {
+    if (!WAKE_WORD_OPTIONS.some(option => option.id === patch.wakeWord)) {
+      throw Object.assign(new Error(`unknown wake word: ${patch.wakeWord}`), { status: 400 })
+    }
+    lines = applyValues(lines, { [CONFIG_KEYS.wakeWord]: patch.wakeWord })
+    changed.push('wakeWord')
+  }
+
+  if (patch.followUpSeconds !== undefined) {
+    const seconds = clampNumber(patch.followUpSeconds, FOLLOW_UP_SECONDS_RANGE)
+    if (seconds === null) {
+      throw Object.assign(new Error('followUpSeconds must be a number'), { status: 400 })
+    }
+    lines = applyValues(lines, { [CONFIG_KEYS.followUpSeconds]: String(seconds) })
+    changed.push('followUpSeconds')
+  }
+
+  if (typeof patch.cameraEnabled === 'boolean') {
+    lines = applyValues(lines, {
+      [CONFIG_KEYS.cameraEnabled]: patch.cameraEnabled ? 'true' : 'false',
+    })
+    changed.push('cameraEnabled')
+  }
+
   if (!changed.length) return { changed }
   writeConfig(lines)
   return { changed }
@@ -264,6 +348,10 @@ const MANAGED_ENV_KEYS = Object.freeze([
   CONFIG_KEYS.turnSilenceMs,
   CONFIG_KEYS.computerUse,
   CONFIG_KEYS.webTools,
+  CONFIG_KEYS.listeningMode,
+  CONFIG_KEYS.wakeWord,
+  CONFIG_KEYS.followUpSeconds,
+  CONFIG_KEYS.cameraEnabled,
   'ACP_COMMAND',
   'ACP_ARGS',
   'ACP_LABEL',

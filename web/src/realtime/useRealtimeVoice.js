@@ -28,6 +28,7 @@ import {
   microphoneErrorKind,
 } from './microphone-capture.js'
 import { confirmTrackedPlaybackStart } from './playback-lifecycle.js'
+import { playWakeChime } from './chime.js'
 import { t } from '../i18n.js'
 import {
   createGatewayWebSocket,
@@ -223,6 +224,8 @@ export default function useRealtimeVoice({
     ownership,
     voiceState: state,
     wakeWordActive,
+    listeningState,
+    listeningWakeWord,
   } = clientState
   const eventRef = useRef(onEvent)
   const inputErrorRef = useRef(onInputError)
@@ -1009,6 +1012,18 @@ export default function useRealtimeVoice({
     sendSocketEvent({ type: GatewayClientEvent.WAKE })
   ), [sendSocketEvent])
 
+  // Wake chime on the shared AudioContext, outside the playback tracker. The
+  // mic keeps sending: speech right after the wake word must reach the model.
+  const playChime = useCallback(async () => {
+    const context = audioRef.current
+    if (!context || context.state === 'closed') return false
+    try {
+      return await playWakeChime(context) > 0
+    } catch {
+      return false
+    }
+  }, [])
+
   const publishClientEvent = useCallback((name, data = {}, deliveryHint) => (
     sendSocketEvent({
       type: GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH,
@@ -1108,10 +1123,13 @@ export default function useRealtimeVoice({
     visualError,
     connectionState,
     wakeWordActive,
+    listeningState,
+    listeningWakeWord,
     ownership,
     activateAudio,
     interrupt,
     wake,
+    playChime,
     publishClientEvent,
     sendInput,
     sendImageFrame,
