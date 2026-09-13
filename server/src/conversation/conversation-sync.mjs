@@ -82,6 +82,10 @@ export class ConversationSync {
     return state || null
   }
 
+  forget(ownerId, sessionId) {
+    return this.sessions.delete(sessionKey(ownerId, sessionId))
+  }
+
   prune(now = Date.now()) {
     this.sessions.forEach((state, key) => {
       if (now - state.lastAccessedAt >= this.sessionTtlMs) this.sessions.delete(key)

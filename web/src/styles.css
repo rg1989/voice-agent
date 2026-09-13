@@ -2168,3 +2168,102 @@ header:has(.workspace-switch) .runtime-status + * { margin-left: auto; }
 .runtime-status .spend small { font-size: 10px; color: #80838e; }
 .runtime-status .spend.exhausted b { color: #f0928c; }
 .runtime-status .spend.exhausted small { color: #f0928c; }
+
+/* 会话历史：唯一一个真正的模态框。设置和资料库是嵌在工作区里的面板，
+   历史是「挑一个然后离开」的一次性选择，盖在上面更合适。 */
+.session-history-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(6, 8, 12, 0.62);
+  backdrop-filter: blur(6px);
+}
+
+.session-history {
+  width: min(560px, 100%);
+  max-height: min(70dvh, 640px);
+  display: flex;
+  flex-direction: column;
+  padding: 14px 16px;
+  border: 1px solid #ffffff16;
+  border-radius: 16px;
+  background: rgba(18, 21, 27, 0.96);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+}
+
+.session-history > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.session-history > header button {
+  padding: 2px 8px;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.session-history-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.session-history-list li {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  border-radius: 10px;
+}
+
+.session-history-list li.current { background: #ffffff0c; }
+
+.session-open {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.session-open:hover { background: #ffffff12; }
+.session-open b { font-weight: 500; }
+.session-open small { opacity: 0.55; font-size: 11px; }
+
+.session-delete {
+  flex: 0 0 auto;
+  width: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  opacity: 0.4;
+  cursor: pointer;
+}
+
+.session-delete:hover { opacity: 1; background: #ff6b6b22; }
+
+.session-delete svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}

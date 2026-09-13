@@ -21,6 +21,7 @@ import DesktopFluidOrb from './desktop/DesktopFluidOrb.jsx'
 import DesktopSpriteOrb from './desktop/DesktopSpriteOrb.jsx'
 import KnowledgeLibraryPanel from './KnowledgeLibraryPanel.jsx'
 import SettingsPanel from './SettingsPanel.jsx'
+import SessionHistory from './SessionHistory.jsx'
 import WorkspaceSwitcher from './WorkspaceSwitcher.jsx'
 import SpendReadout from './SpendReadout.jsx'
 import {
@@ -180,6 +181,12 @@ function OrbControlIcon({ type, muted = false, collapsed = false }) {
       <path d="M12 8v5m-2.5-2.5h5" />
     </svg>
   }
+  if (type === 'history') {
+    return <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 7.5V12l3 2" />
+    </svg>
+  }
   if (type === 'collapse') {
     return <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="m8 10 4 4 4-4" />
@@ -238,6 +245,7 @@ export default function App() {
   const [desktopTasksCollapsed, setDesktopTasksCollapsed] = useState(false)
   const [showKnowledgeLibrary, setShowKnowledgeLibrary] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
   const [desktopTaskLayout, setDesktopTaskLayout] = useState({
     placement: 'below',
     orbOffsetX: 0,
@@ -1062,10 +1070,11 @@ export default function App() {
     .replace(/\s+Realtime\b/gi, '')
     .trim()
 
-  const resetSession = () => {
+  // 换会话就是换 sessionId：Gateway 会用新的 id 重新握手，然后通过
+  // session.recovered 把那一场的消息发回来。这里只负责清掉属于上一场的本地状态。
+  const switchSession = (next, notice) => {
     taskDismissTimers.current.forEach(timer => clearTimeout(timer))
     taskDismissTimers.current.clear()
-    const next = crypto.randomUUID()
     localStorage.setItem('qwen-audio-agent.session', next)
     setSessionId(next)
     setMessages([])
@@ -1074,8 +1083,10 @@ export default function App() {
     activeVoiceResponse.current = ''
     responseTurnMap.current.clear()
     agentTurnIds.current.clear()
-    setActivity(t('已创建新会话'))
+    setActivity(notice)
   }
+
+  const resetSession = () => switchSession(crypto.randomUUID(), t('已创建新会话'))
 
   const enableVoice = () => {
     if (!voice.activateAudio()) return
@@ -1410,6 +1421,16 @@ export default function App() {
           <OrbControlIcon type="settings" />
         </button>
       )}
+      {!desktopOrbMode && (
+        <button
+          className={`header-action${showHistory ? ' active' : ''}`}
+          onClick={() => setShowHistory(value => !value)}
+          aria-label={t('会话历史')}
+          title={t('会话历史')}
+        >
+          <OrbControlIcon type="history" />
+        </button>
+      )}
       <button
         className={desktopOrbMode ? 'ghost desktop-new-session' : 'header-action'}
         onClick={resetSession}
@@ -1456,6 +1477,16 @@ export default function App() {
       {showSettings && <SettingsPanel
         onClose={() => setShowSettings(false)}
         setOutputVoice={voice.setOutputVoice}
+      />}
+      {showHistory && <SessionHistory
+        currentSessionId={sessionId}
+        onClose={() => setShowHistory(false)}
+        onOpen={next => {
+          setShowHistory(false)
+          if (next === sessionId) return
+          switchSession(next, t('已切换会话'))
+        }}
+        onDeleted={() => resetSession()}
       />}
       <div className="hero">
         <button

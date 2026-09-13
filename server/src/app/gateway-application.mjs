@@ -790,6 +790,32 @@ app.get('/api/timeline', (req, res) => {
 })
 
 // Durable session facts are intentionally exposed separately from the UI
+// Session history for the WebUI picker: one row per session the owner has
+// actually spoken in, newest first.
+app.get('/api/sessions', (req, res, next) => {
+  try {
+    res.json({ sessions: sessionJournalRuntime.listSessions(req.identity.ownerId) })
+  } catch (error) {
+    next(error)
+  }
+})
+
+// Deleting a session drops both the journal on disk and the in-memory
+// conversation, so a client that reconnects with that id starts empty instead
+// of getting the deleted history back from the cache.
+app.delete('/api/sessions/:sessionId', (req, res, next) => {
+  try {
+    const removed = sessionJournalRuntime.removeSession(
+      req.identity.ownerId,
+      req.params.sessionId,
+    )
+    conversationSync.forget(req.identity.ownerId, req.params.sessionId)
+    res.json({ removed })
+  } catch (error) {
+    next(error)
+  }
+})
+
 // timeline. Clients may use this for reconnect/recovery; projections should
 // not need to understand the on-disk JSONL format.
 app.get('/api/sessions/:sessionId/events', async (req, res, next) => {
