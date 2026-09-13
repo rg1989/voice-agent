@@ -4,6 +4,19 @@ import { inputPartRef } from '../../../../shared/input-parts.mjs'
 import { BackendEventType } from '../../core/backend-events.mjs'
 import { isTaskCancellable } from '../../task/task-state.mjs'
 import { toolFailure as failure } from './tool-result.mjs'
+import { config } from '../../core/config.mjs'
+
+// 开启「只把一句话摘要发给语音模型」后，Gateway 只转发后台自己写的 VOICE: 那一行
+// （见 voice/realtime-agent-delivery-runtime.mjs）。没有人要求后台写这一行的话，每个
+// 结果都会退化成兜底的那句话，所以把这个要求随目标一起交给后台。
+// 只加在发给后台的那份字符串上：任务记录里的 objective 是给屏幕看的，保持原样。
+const VOICE_BRIEF = ' End your reply with a separate final line: '
+  + 'VOICE: <one plain spoken sentence — no paths, code, file contents, IDs, URLs or '
+  + 'version numbers>. That line is the only part read aloud; the full result stays on screen.'
+
+function voiceBriefed(objective) {
+  return config.voiceSummaryOnly ? `${objective}${VOICE_BRIEF}` : objective
+}
 
 const CANCEL_RECEIPT_INSTRUCTIONS = [
   '根据本次响应中的全部取消结果，只作一次简短自然的确认。',
@@ -152,7 +165,7 @@ export class AgentTaskRuntime {
       runner: async (_ignored, { onEvent, signal }) => {
         try {
           return await this.host.backendRuntime.run({
-            objective,
+            objective: voiceBriefed(objective),
             inputParts,
           }, {
             ownerId: this.host.ownerId,
