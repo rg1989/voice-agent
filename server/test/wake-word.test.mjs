@@ -128,18 +128,18 @@ test('uses cached wake word models without downloading', async () => {
   try {
     const directory = wakeWordModelDirectory(cacheDirectory)
     mkdirSync(directory, { recursive: true })
-    for (const file of ['melspectrogram.onnx', 'embedding_model.onnx', WAKE_WORD_MODELS.alexa.file]) {
+    for (const file of ['melspectrogram.onnx', 'embedding_model.onnx', WAKE_WORD_MODELS.hey_lisa.file]) {
       writeFileSync(join(directory, file), 'model')
     }
     const models = await ensureWakeWordModels({
       cacheDirectory,
-      wakeWord: 'alexa',
+      wakeWord: 'hey_lisa',
       fetchImpl: () => assert.fail('must not download'),
     })
     assert.deepEqual(models, {
       melspectrogram: join(directory, 'melspectrogram.onnx'),
       embedding: join(directory, 'embedding_model.onnx'),
-      classifier: join(directory, 'alexa_v0.1.onnx'),
+      classifier: join(directory, 'hey_lisa_8bcd2f20.onnx'),
     })
   } finally {
     rmSync(cacheDirectory, { recursive: true, force: true })
@@ -171,6 +171,17 @@ test('rejects unknown wake words and downloads that fail verification', async ()
     const directory = wakeWordModelDirectory(cacheDirectory)
     assert.ok(existsSync(directory))
     assert.deepEqual(readdirSync(directory), [])
+
+    // Community classifiers come from their pinned commit.
+    await assert.rejects(ensureWakeWordModels({
+      cacheDirectory,
+      wakeWord: 'hey_megan',
+      fetchImpl: async url => {
+        requested.push(url)
+        return new Response('missing', { status: 404 })
+      },
+    }), /HTTP 404/)
+    assert.ok(requested.includes('https://raw.githubusercontent.com/fwartner/home-assistant-wakewords-collection/8bcd2f20bb7b76c351b2eff871fa1ce873fe9be2/en/hey_megan/hey_megan.onnx'))
   } finally {
     rmSync(cacheDirectory, { recursive: true, force: true })
   }

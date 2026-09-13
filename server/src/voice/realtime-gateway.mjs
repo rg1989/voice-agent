@@ -738,6 +738,9 @@ export function attachRealtimeGateway(server, {
         || announcementWindow.isPlaying()
       ),
       isUserSpeaking: () => turns.userSpeaking,
+      // A late settle (an interrupted answer's cancel) must not start the
+      // follow-up countdown while the next answer is still due or heard.
+      isResponding: () => Boolean(responseTurnCandidate) || announcementWindow.isPlaying(),
       onWakeCheckEnd: (verified, turnIds) => endWakeHold(verified, turnIds),
       onChange: status => {
         send(ws, { type: GatewayServerEvent.VOICE_LISTENING, ...status })
@@ -1185,8 +1188,8 @@ export function attachRealtimeGateway(server, {
       announcementQuietMs: config.announcementQuietMs,
       responseContextCleanupMs: RESPONSE_CONTEXT_CLEANUP_MS,
       turnCitations,
-      onResponseSettled: context => {
-        if (!silenceReason(context?.turnId)) listeningGate.responseSettled()
+      onResponseSettled: (context, responseId) => {
+        if (!silenceReason(context?.turnId)) listeningGate.responseSettled(responseId)
       },
     })
 

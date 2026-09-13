@@ -15,6 +15,10 @@ export function createGatewayClientState({
     wakeWordActive: false,
     listeningState: 'always',
     listeningWakeWord: '',
+    // Follow-up countdown after a reply: its length, and a key that changes
+    // with every new countdown so the UI can restart it.
+    listeningFollowUpMs: 0,
+    listeningFollowUpKey: 0,
     ownership: { ...DEFAULT_OWNERSHIP },
     currentTurnId: '',
   }
@@ -46,6 +50,7 @@ export function reduceGatewayClientState(current, event) {
         connectionState: 'unavailable',
         voiceReady: false,
         voiceState: 'idle',
+        listeningFollowUpMs: 0,
       }
 
     case GatewayServerEvent.VOICE_READY:
@@ -84,12 +89,19 @@ export function reduceGatewayClientState(current, event) {
         wakeWordActive: event.state === 'enabled',
       }
 
-    case GatewayServerEvent.VOICE_LISTENING:
+    case GatewayServerEvent.VOICE_LISTENING: {
+      // Only the status that starts a countdown carries followUpMs.
+      const followUpMs = Number.isInteger(event.followUpMs) && event.followUpMs > 0
+        ? event.followUpMs
+        : 0
       return {
         ...state,
         listeningState: event.state || state.listeningState,
         listeningWakeWord: event.wakeWord || state.listeningWakeWord,
+        listeningFollowUpMs: followUpMs,
+        listeningFollowUpKey: state.listeningFollowUpKey + (followUpMs ? 1 : 0),
       }
+    }
 
     case GatewayServerEvent.VOICE_OWNERSHIP:
       return {

@@ -274,7 +274,7 @@ test('a bare stop phrase cancels the answer and re-arms without speaking', async
   client.socket.close()
 })
 
-test('ignore_input stays silent, re-arms, and does not trip the response watchdog', async t => {
+test('ignore_input stays silent, keeps listening, and does not trip the response watchdog', async t => {
   const { server, frontends, detectors } = await startGateway(t, { responseStartTimeoutMs: 150 })
   const client = await connect(server)
   await wake(client, detectors)
@@ -295,8 +295,9 @@ test('ignore_input stays silent, re-arms, and does not trip the response watchdo
   assert.equal(client.listening().state, 'awake')
   transcribe(frontend, 'item-3', 'Hey Jarvis, the TV is on.')
 
-  await waitUntil(() => client.listening().state === 'armed')
-  assert.equal(client.listening().reason, 'ignored')
+  // Only that input is dropped: the follow-up window runs again.
+  await waitUntil(() => client.listening().reason === 'follow_up')
+  assert.equal(client.listening().state, 'awake')
   await waitUntil(() => frontend.functionOutputs.length === 1)
   assert.deepEqual(frontend.functionOutputs[0][1], { status: 'ignored' })
   assert.equal(frontend.functionOutputs[0][3].createResponse, false)
@@ -714,5 +715,198 @@ test('unannounced speech right after a wake that never names the wake word is re
   await sleep(50)
   assert.equal(audioDeltaCount(client), 0)
   assert.deepEqual(frontend.deleted, ['item-h1'])
+  client.socket.close()
+})
+
+const interruptions = client => client.received.filter(event => (
+  event.type === 'playback.clear' && event.reason === 'user_interruption'
+)).length
+const countdowns = client => client.received.filter(event => (
+  event.type === 'voice.listening' && event.followUpMs !== undefined
+))
+
+// Regression: the interrupted answer's late cancel started the follow-up
+// window while the new turn still waited for its answer, so a slow answer
+// played re-armed and could no longer be talked over.
+test('speech over an answer interrupts it and is answered, however late the answer starts', async t => {
+  const { server, frontends, detectors } = await startGateway(t, { followUpSeconds: 1 })
+  const client = await connect(server)
+  await wake(client, detectors)
+  const frontend = frontends[0]
+
+  userTurn(frontend, 'item-i1', 'Hey Jarvis, tell me a long story.')
+  frontend.emit({ type: 'response.created', response: { id: 'resp-i1' } })
+  frontend.emit({ type: 'response.output_audio.delta', response_id: 'resp-i1', delta: chunk(1) })
+  await waitUntil(() => audioDeltaCount(client) === 1)
+  client.send({ type: 'playback.started', responseId: 'resp-i1' })
+  await sleep(50)
+
+  // Talking over it stops playback, as in always mode.
+  const clearsBefore = interruptions(client)
+  frontend.emit({ type: 'input_audio_buffer.speech_started', item_id: 'item-i2' })
+  await waitUntil(() => interruptions(client) > clearsBefore)
+  client.send({ type: 'playback.cancelled', responseId: 'resp-i1', reason: 'user_interruption' })
+  frontend.emit({ type: 'input_audio_buffer.speech_stopped', item_id: 'item-i2' })
+  // The provider's cancel lands after the speech ended, and the answer is slow.
+  frontend.emit({ type: 'response.done', response: { id: 'resp-i1', status: 'cancelled' } })
+  transcribe(frontend, 'item-i2', 'Actually, what time is it?')
+  await sleep(1_800)
+  assert.equal(client.listening().state, 'awake')
+  assert.deepEqual(countdowns(client), [])
+
+  frontend.emit({ type: 'response.created', response: { id: 'resp-i2' } })
+  frontend.emit({ type: 'response.output_audio.delta', response_id: 'resp-i2', delta: chunk(2) })
+  frontend.emit({ type: 'response.done', response: { id: 'resp-i2', status: 'completed' } })
+  await waitUntil(() => audioDeltaCount(client) === 2)
+  client.send({ type: 'playback.started', responseId: 'resp-i2' })
+  const appended = frontend.appended.length
+  client.send({ type: 'audio.append', audio: chunk(3) })
+  await waitUntil(() => frontend.appended.length === appended + 1)
+  assert.equal(client.listening().state, 'awake')
+
+  // Finished talking: the countdown starts, and silence re-arms after it.
+  client.send({ type: 'playback.ended', responseId: 'resp-i2' })
+  await waitUntil(() => countdowns(client).length === 1)
+  const countdown = countdowns(client)[0]
+  assert.equal(countdown.state, 'awake')
+  assert.equal(countdown.reason, 'follow_up')
+  assert.equal(countdown.followUpMs, 1000)
+  // A short hidden grace follows the visible countdown.
+  await sleep(1_150)
+  assert.equal(client.listening().state, 'awake')
+  await waitUntil(() => client.listening().state === 'armed', 1_000)
+  assert.equal(client.listening().reason, 'follow_up_expired')
+  assert.equal(client.listening().followUpMs, undefined)
+  client.socket.close()
+})
+
+test('speech a few seconds after the answer reaches the provider and needs no wake word', async t => {
+  const { server, frontends, detectors } = await startGateway(t)
+  const client = await connect(server)
+  await wake(client, detectors)
+  const frontend = frontends[0]
+
+  userTurn(frontend, 'item-b1', 'Hey Jarvis, what is on my calendar?')
+  frontend.emit({ type: 'response.created', response: { id: 'resp-b1' } })
+  frontend.emit({ type: 'response.output_audio.delta', response_id: 'resp-b1', delta: chunk(1) })
+  frontend.emit({ type: 'response.done', response: { id: 'resp-b1', status: 'completed' } })
+  await waitUntil(() => audioDeltaCount(client) === 1)
+  const voiceStates = () => client.received.filter(event => event.type === 'voice.state').length
+  const statesBefore = voiceStates()
+  client.send({ type: 'playback.started', responseId: 'resp-b1' })
+  client.send({ type: 'playback.ended', responseId: 'resp-b1' })
+  await waitUntil(() => voiceStates() > statesBefore + 1)
+
+  await sleep(4_000)
+  const appended = frontend.appended.length
+  client.send({ type: 'audio.append', audio: chunk(5) })
+  await waitUntil(() => frontend.appended.length === appended + 1)
+  frontend.emit({ type: 'input_audio_buffer.speech_started', item_id: 'item-b2' })
+  frontend.emit({ type: 'input_audio_buffer.speech_stopped', item_id: 'item-b2' })
+  transcribe(frontend, 'item-b2', 'And tomorrow?')
+  frontend.emit({ type: 'response.created', response: { id: 'resp-b2' } })
+  frontend.emit({ type: 'response.output_audio.delta', response_id: 'resp-b2', delta: chunk(2) })
+  await waitUntil(() => audioDeltaCount(client) === 2)
+  assert.equal(client.listening().state, 'awake')
+  assert.ok(storedUserText().includes('And tomorrow?'))
+
+  // The countdown was shown, then hidden once the user spoke.
+  assert.equal(countdowns(client).length, 1)
+  assert.equal(countdowns(client)[0].followUpMs, 5000)
+  assert.notEqual(client.listening().reason, 'follow_up')
+  assert.equal(client.listening().followUpMs, undefined)
+  client.socket.close()
+})
+
+test('a failed answer starts the countdown once its audio stops', async t => {
+  const { server, frontends, detectors } = await startGateway(t, { followUpSeconds: 1 })
+  const client = await connect(server)
+  await wake(client, detectors)
+  const frontend = frontends[0]
+
+  userTurn(frontend, 'item-e1', 'Hey Jarvis, tell me a story.')
+  frontend.emit({ type: 'response.created', response: { id: 'resp-e1' } })
+  frontend.emit({ type: 'response.output_audio.delta', response_id: 'resp-e1', delta: chunk(1) })
+  await waitUntil(() => audioDeltaCount(client) === 1)
+  client.send({ type: 'playback.started', responseId: 'resp-e1' })
+  await sleep(50)
+  frontend.emit({ type: 'error', response_id: 'resp-e1', error: { message: 'Internal server error' } })
+  await sleep(50)
+  assert.deepEqual(countdowns(client), [])
+  client.send({ type: 'playback.ended', responseId: 'resp-e1' })
+  await waitUntil(() => countdowns(client).length === 1)
+  assert.equal(countdowns(client)[0].followUpMs, 1000)
+  client.socket.close()
+})
+
+test('input the model ignores does not extend the follow-up window', async t => {
+  const { server, frontends, detectors } = await startGateway(t, { followUpSeconds: 1 })
+  const client = await connect(server)
+  await wake(client, detectors)
+  const frontend = frontends[0]
+
+  userTurn(frontend, 'item-g1', 'Hey Jarvis, what time is it?')
+  frontend.emit({ type: 'response.created', response: { id: 'resp-g1' } })
+  frontend.emit({ type: 'response.output_audio.delta', response_id: 'resp-g1', delta: chunk(1) })
+  frontend.emit({ type: 'response.done', response: { id: 'resp-g1', status: 'completed' } })
+  await waitUntil(() => audioDeltaCount(client) === 1)
+  client.send({ type: 'playback.started', responseId: 'resp-g1' })
+  client.send({ type: 'playback.ended', responseId: 'resp-g1' })
+  await waitUntil(() => countdowns(client).length === 1)
+  const started = Date.now()
+
+  // The TV talks, and the model ignores it.
+  await sleep(500)
+  userTurn(frontend, 'item-g2')
+  frontend.emit({ type: 'response.created', response: { id: 'resp-g2' } })
+  frontend.emit({
+    type: 'response.function_call_arguments.done',
+    response_id: 'resp-g2',
+    call_id: 'call-g2',
+    name: 'ignore_input',
+    arguments: '{}',
+  })
+  frontend.emit({ type: 'response.done', response: { id: 'resp-g2', status: 'completed' } })
+  transcribe(frontend, 'item-g2', 'and now the weather for the weekend')
+  await waitUntil(() => countdowns(client).length === 2)
+  const resumed = countdowns(client)[1].followUpMs
+  assert.ok(resumed > 0 && resumed < 1000, String(resumed))
+  await waitUntil(() => client.listening().state === 'armed', 2_000)
+  assert.ok(Date.now() - started < 1_800)
+  client.socket.close()
+})
+
+// Regression: the provider announces speech a few hundred ms after it
+// starts, so speech begun at the end of the window was cut by the arm.
+test('speech begun just before the window ends is not cut off', async t => {
+  const { server, frontends, detectors } = await startGateway(t, { followUpSeconds: 1 })
+  const client = await connect(server)
+  await wake(client, detectors)
+  const frontend = frontends[0]
+
+  userTurn(frontend, 'item-l1', 'Hey Jarvis, set a timer.')
+  frontend.emit({ type: 'response.created', response: { id: 'resp-l1' } })
+  frontend.emit({ type: 'response.output_audio.delta', response_id: 'resp-l1', delta: chunk(1) })
+  frontend.emit({ type: 'response.done', response: { id: 'resp-l1', status: 'completed' } })
+  await waitUntil(() => audioDeltaCount(client) === 1)
+  const voiceStates = () => client.received.filter(event => event.type === 'voice.state').length
+  const statesBefore = voiceStates()
+  client.send({ type: 'playback.started', responseId: 'resp-l1' })
+  client.send({ type: 'playback.ended', responseId: 'resp-l1' })
+  await waitUntil(() => voiceStates() > statesBefore + 1)
+
+  await sleep(900)
+  const appended = frontend.appended.length
+  client.send({ type: 'audio.append', audio: chunk(6) })
+  await waitUntil(() => frontend.appended.length === appended + 1)
+  await sleep(250)
+  frontend.emit({ type: 'input_audio_buffer.speech_started', item_id: 'item-l2' })
+  frontend.emit({ type: 'input_audio_buffer.speech_stopped', item_id: 'item-l2' })
+  transcribe(frontend, 'item-l2', 'For ten minutes.')
+  frontend.emit({ type: 'response.created', response: { id: 'resp-l2' } })
+  frontend.emit({ type: 'response.output_audio.delta', response_id: 'resp-l2', delta: chunk(2) })
+  await waitUntil(() => audioDeltaCount(client) === 2)
+  assert.equal(client.listening().state, 'awake')
+  assert.equal(client.received.some(event => event.reason === 'listening_armed'), false)
   client.socket.close()
 })

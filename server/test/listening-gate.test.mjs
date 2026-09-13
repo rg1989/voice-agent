@@ -118,7 +118,14 @@ test('the follow-up window starts only when the response has settled', t => {
   assert.equal(kit.gate.state, 'awake')
 
   kit.gate.responseSettled()
-  t.mock.timers.tick(4_999)
+  assert.deepEqual(kit.states().at(-1), {
+    state: 'awake',
+    reason: 'follow_up',
+    wakeWord: 'hey_jarvis',
+    followUpMs: 5000,
+  })
+  // The visible countdown, then a short hidden grace.
+  t.mock.timers.tick(5_499)
   assert.equal(kit.gate.state, 'awake')
   t.mock.timers.tick(1)
   assert.equal(kit.gate.state, 'armed')
@@ -133,6 +140,12 @@ test('new speech or a new response cancels the follow-up window', t => {
   kit.gate.responseSettled()
   t.mock.timers.tick(3_000)
   kit.gate.responseStarted()
+  // The countdown is hidden again.
+  assert.deepEqual(kit.states().at(-1), {
+    state: 'awake',
+    reason: 'follow_up_cancelled',
+    wakeWord: 'hey_jarvis',
+  })
   t.mock.timers.tick(10_000)
   assert.equal(kit.gate.state, 'awake')
   kit.gate.responseSettled()
@@ -146,6 +159,49 @@ test('new speech or a new response cancels the follow-up window', t => {
   kit.gate.responseSettled()
   t.mock.timers.tick(60_000)
   assert.equal(kit.gate.state, 'awake')
+})
+
+test('only the status that starts a countdown carries followUpMs', t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const kit = harness()
+  kit.gate.append(chunk(1))
+  kit.detectors[0].options.onDetected()
+  kit.gate.responseSettled()
+  assert.equal(kit.states().at(-1).followUpMs, 5000)
+  t.mock.timers.tick(1_000)
+  // A re-sent status must not restart the bar while the timer runs on.
+  kit.gate.applySettings({ listeningMode: 'wake_word', wakeWord: 'hey_lisa', followUpSeconds: 5 })
+  assert.deepEqual(kit.states().at(-1), { state: 'awake', reason: 'follow_up', wakeWord: 'hey_lisa' })
+  assert.equal(kit.gate.status().followUpMs, undefined)
+})
+
+test('an ignored input resumes the running countdown instead of restarting it', t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] })
+  const kit = harness()
+  kit.gate.append(chunk(1))
+  kit.detectors[0].options.onDetected()
+  kit.gate.responseSettled('resp-1')
+  t.mock.timers.tick(2_000)
+  kit.gate.speechStarted()
+  t.mock.timers.tick(1_000)
+  kit.gate.inputIgnored('resp-2')
+  kit.gate.responseSettled('resp-2')
+  assert.equal(kit.states().at(-1).followUpMs, 2000)
+  t.mock.timers.tick(2_499)
+  assert.equal(kit.gate.state, 'awake')
+  t.mock.timers.tick(1)
+  assert.equal(kit.gate.state, 'armed')
+  assert.equal(kit.states().at(-1).reason, 'follow_up_expired')
+
+  // With no countdown to resume, and after a real answer, the window is full.
+  kit.detectors[0].options.onDetected()
+  kit.gate.inputIgnored('resp-3')
+  kit.gate.responseSettled('resp-3')
+  assert.equal(kit.states().at(-1).followUpMs, 5000)
+  t.mock.timers.tick(4_000)
+  kit.gate.speechStarted()
+  kit.gate.responseSettled('resp-4')
+  assert.equal(kit.states().at(-1).followUpMs, 5000)
 })
 
 test('a zero-second follow-up re-arms as soon as the response settles', () => {
@@ -172,10 +228,10 @@ test('stop re-arms only in wake word mode', () => {
 
 test('mode switches apply live', () => {
   const kit = harness({ listeningMode: 'always' })
-  kit.gate.applySettings({ listeningMode: 'wake_word', wakeWord: 'alexa', followUpSeconds: 5 })
-  assert.deepEqual(kit.states().at(-1), { state: 'armed', reason: 'mode_changed', wakeWord: 'alexa' })
+  kit.gate.applySettings({ listeningMode: 'wake_word', wakeWord: 'hey_lisa', followUpSeconds: 5 })
+  assert.deepEqual(kit.states().at(-1), { state: 'armed', reason: 'mode_changed', wakeWord: 'hey_lisa' })
   kit.gate.append(chunk(1))
-  assert.equal(kit.detectors[0].options.wakeWord, 'alexa')
+  assert.equal(kit.detectors[0].options.wakeWord, 'hey_lisa')
 
   kit.gate.applySettings({ listeningMode: 'wake_word', wakeWord: 'hey_mycroft', followUpSeconds: 5 })
   assert.equal(kit.detectors[0].closed, true)
@@ -234,12 +290,13 @@ test('recognises bare stop phrases, with or without a leading wake word', () => 
     'Stop listening.',
     'stop listening now',
     'Go to sleep!',
-    'Stop',
     "That's all",
     'That’s all.',
     'Never mind',
     'Hey Jarvis, stop listening',
-    'Alexa stop',
+    'Hey Lisa, stop listening.',
+    'Megan, go to sleep',
+    'Hey Jarvis, go to sleep',
     '停止监听。',
     '别听了',
     '不用了！',
@@ -247,6 +304,8 @@ test('recognises bare stop phrases, with or without a leading wake word', () => 
     assert.equal(isStopListeningPhrase(phrase), true, phrase)
   }
   for (const phrase of [
+    // A bare stop only interrupts the answer.
+    'Stop',
     'stop the timer',
     "don't stop listening",
     'what is the weather',
@@ -295,10 +354,11 @@ test('recognises the wake word only in its common transcript spellings', () => {
     ['hey_jarvis', 'Jarvus.'],
     ['hey_jarvis', '贾维斯，现在几点？'],
     ['hey_jarvis', '嘿嘉维斯'],
-    ['alexa', 'Alexa, play some music'],
-    ['alexa', 'alexia'],
-    ['alexa', 'Alexis?'],
-    ['alexa', '亚莉克莎你好'],
+    ['hey_lisa', 'Hey Lisa, play some music'],
+    ['hey_lisa', 'hey leesa'],
+    ['hey_lisa', '丽莎你好'],
+    ['hey_megan', 'Hey Meghan!'],
+    ['hey_megan', '梅根，现在几点？'],
     ['hey_mycroft', 'Hey Mycroft.'],
     ['hey_mycroft', 'hey my croft'],
   ]) {
@@ -308,8 +368,9 @@ test('recognises the wake word only in its common transcript spellings', () => {
     ['hey_jarvis', 'hey travis what time is it'],
     ['hey_jarvis', 'Hey Jarvi'],
     ['hey_jarvis', 'jarvisbot'],
-    ['hey_jarvis', 'Alexa'],
-    ['alexa', 'alexander'],
+    ['hey_jarvis', 'Hey Lisa'],
+    ['hey_lisa', 'hey melissa'],
+    ['hey_megan', 'hey morgan'],
     ['hey_mycroft', 'hey microsoft'],
     ['unknown', 'jarvis'],
     ['hey_jarvis', ''],
@@ -324,7 +385,7 @@ test('a transcript that is only the wake word asks for nothing', () => {
     ['hey_jarvis', 'Jarvis?'],
     ['hey_jarvis', 'Okay, Jarvis! Jarvis!'],
     ['hey_jarvis', '嘿，贾维斯'],
-    ['alexa', 'Alexa'],
+    ['hey_megan', 'Megan'],
     ['hey_mycroft', 'Hey my croft'],
   ]) {
     assert.equal(isWakeWordOnly(wakeWord, transcript), true, transcript)
@@ -333,7 +394,7 @@ test('a transcript that is only the wake word asks for nothing', () => {
     ['hey_jarvis', 'Hey Jarvis, what time is it?'],
     ['hey_jarvis', 'Hey Travis.'],
     ['hey_jarvis', '贾维斯现在几点'],
-    ['alexa', 'Alexa play some music'],
+    ['hey_lisa', 'Hey Lisa play some music'],
     ['hey_jarvis', ''],
   ]) {
     assert.equal(isWakeWordOnly(wakeWord, transcript), false, transcript)

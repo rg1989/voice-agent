@@ -56,7 +56,8 @@ export const LISTENING_MODE_OPTIONS = Object.freeze([
 
 export const WAKE_WORD_OPTIONS = Object.freeze([
   { id: 'hey_jarvis', label: 'Hey Jarvis' },
-  { id: 'alexa', label: 'Alexa' },
+  { id: 'hey_lisa', label: 'Hey Lisa' },
+  { id: 'hey_megan', label: 'Hey Megan' },
   { id: 'hey_mycroft', label: 'Hey Mycroft' },
 ])
 
@@ -317,7 +318,7 @@ export function updateRuntimeSettings(patch = {}) {
     if (seconds === null) {
       throw Object.assign(new Error('followUpSeconds must be a number'), { status: 400 })
     }
-    lines = applyValues(lines, { [CONFIG_KEYS.followUpSeconds]: String(seconds) })
+    lines = applyValues(lines, { [CONFIG_KEYS.followUpSeconds]: String(Math.round(seconds)) })
     changed.push('followUpSeconds')
   }
 

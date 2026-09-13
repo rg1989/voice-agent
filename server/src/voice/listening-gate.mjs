@@ -16,12 +16,16 @@ const DETECTOR_RETRY_MS = 30_000
 // Upper bound for an awake exchange that never settles (no response, a failed
 // or dropped one), so the microphone never stays open without a timer.
 const AWAKE_SAFETY_MS = 120_000
+// ponytail: hidden grace after the visible follow-up countdown. The provider
+// announces speech a few hundred ms after it starts, so speech begun at the
+// last moment must not be cut by the arm.
+const FOLLOW_UP_GRACE_MS = 500
 
+// A bare "stop" is not one: talking over the answer already interrupts it.
 const STOP_PHRASES = new Set([
   'stop listening',
   'stop listening now',
   'go to sleep',
-  'stop',
   'thats all',
   'never mind',
   'nevermind',
@@ -30,7 +34,9 @@ const STOP_PHRASES = new Set([
   '不用了',
 ])
 
-const WAKE_WORD_PREFIXES = ['hey jarvis', 'jarvis', 'alexa', 'hey mycroft', 'mycroft']
+const WAKE_WORD_PREFIXES = [
+  'hey jarvis', 'jarvis', 'hey lisa', 'lisa', 'hey megan', 'megan', 'hey mycroft', 'mycroft',
+]
 // Words that may sit around a bare wake word ("Hey Jarvis", "嘿，贾维斯").
 const WAKE_WORD_FILLERS = new Set(['hey', 'hi', 'hello', 'ok', 'okay', 'oh', 'yo', '嘿', '你好', '哈喽'])
 
@@ -39,7 +45,8 @@ const WAKE_WORD_FILLERS = new Set(['hey', 'hi', 'hello', 'ok', 'okay', 'oh', 'yo
 // triggers this check has to catch.
 const WAKE_WORD_SPELLINGS = Object.freeze({
   hey_jarvis: ['jarvis', 'jervis', 'jarvas', 'jarvus', '嘉维斯', '贾维斯'],
-  alexa: ['alexa', 'alexia', 'alexis', '亚莉克莎'],
+  hey_lisa: ['lisa', 'leesa', 'liza', '丽莎', '莉莎'],
+  hey_megan: ['megan', 'meghan', 'meagan', '梅根'],
   hey_mycroft: ['mycroft', 'my croft'],
 })
 
@@ -113,6 +120,8 @@ export class ListeningGate {
     onError = () => {},
     isBusy = () => false,
     isUserSpeaking = () => false,
+    // A turn still waits for its answer, or an answer is still being heard.
+    isResponding = () => false,
     // Called once a wake's pending transcript check ends, with its turn ids:
     // true when the wake word was confirmed, false when it never was.
     onWakeCheckEnd = () => {},
@@ -126,6 +135,7 @@ export class ListeningGate {
     this.onError = onError
     this.isBusy = isBusy
     this.isUserSpeaking = isUserSpeaking
+    this.isResponding = isResponding
     this.onWakeCheckEnd = onWakeCheckEnd
     this.getSampleRate = getSampleRate
     this.logger = logger
@@ -138,6 +148,11 @@ export class ListeningGate {
     this.preRollBytes = 0
     this.timer = null
     this.armWhenIdle = false
+    // When the running follow-up countdown ends, and the response whose input
+    // the model ignored: an ignored input resumes that countdown, never
+    // restarts it.
+    this.followUpEndsAt = 0
+    this.ignoredResponseId = ''
     // Turns of the current wake still waiting for the wake word check.
     this.wakeCheck = null
     this.closed = false
@@ -215,17 +230,40 @@ export class ListeningGate {
     if (this.state === ListeningState.AWAKE) this.#startTimer(this.#noSpeechMs(), 'no_speech')
   }
 
-  // The assistant's response has truly ended and no tool follow-up is pending.
-  responseSettled() {
-    if (this.state !== ListeningState.AWAKE || this.isUserSpeaking()) return
+  // ignore_input: that response's input must not stretch the window.
+  inputIgnored(responseId) {
+    this.ignoredResponseId = String(responseId || '')
+  }
+
+  // A response has truly ended and no tool follow-up is pending. Another turn
+  // or answer may still be under way; the countdown waits for the last one.
+  responseSettled(responseId = '') {
+    if (!responseId || responseId !== this.ignoredResponseId) this.followUpEndsAt = 0
+    if (
+      this.state !== ListeningState.AWAKE
+      || this.isUserSpeaking()
+      || this.isResponding()
+    ) return
     if (this.armWhenIdle) {
       this.arm('mode_changed')
       return
     }
-    this.#startTimer(this.settings.followUpSeconds * 1000, 'follow_up_expired')
+    const ms = this.followUpEndsAt
+      ? this.followUpEndsAt - Date.now()
+      : Math.round((Number(this.settings.followUpSeconds) || 0) * 1000)
+    if (ms <= 0) {
+      this.arm('follow_up_expired')
+      return
+    }
+    this.followUpEndsAt ||= Date.now() + ms
+    this.state = ListeningState.AWAKE
+    this.reason = 'follow_up'
+    // Only the status that starts a countdown carries its length.
+    this.onChange({ ...this.status(), followUpMs: ms })
+    this.#startTimer(ms + FOLLOW_UP_GRACE_MS, 'follow_up_expired')
   }
 
-  // Re-arm on request (stop phrase, stop_listening, ignore_input). Only
+  // Re-arm on request (stop phrase, stop_listening). Only
   // meaningful in wake_word mode.
   stop(reason) {
     if (!this.wakeWordMode) return false
@@ -247,6 +285,8 @@ export class ListeningGate {
   arm(reason) {
     this.#clearTimer()
     this.armWhenIdle = false
+    this.followUpEndsAt = 0
+    this.ignoredResponseId = ''
     this.#clearPreRoll()
     // New generation: a detection already on its way is dropped.
     this.detector?.reset()
@@ -283,6 +323,8 @@ export class ListeningGate {
       return
     }
     this.#clearTimer()
+    // Speech or a response hides the countdown until the next settle.
+    if (this.reason === 'follow_up') this.#transition(ListeningState.AWAKE, 'follow_up_cancelled')
     this.timer = setTimeout(() => {
       this.timer = null
       if (this.state !== ListeningState.AWAKE) return

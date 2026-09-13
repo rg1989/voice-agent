@@ -20,6 +20,12 @@ export function wakeWordArmed({ listeningState, voiceEnabled, visualState } = {}
   return voiceEnabled === true && listeningState === 'armed' && visualState === 'idle'
 }
 
+// Length of the "keep talking" countdown to show, 0 when there is none. The
+// gateway only sends followUpMs in wake-word mode.
+export function followUpCountdownMs({ listeningFollowUpMs, voiceEnabled } = {}) {
+  return voiceEnabled === true && listeningFollowUpMs > 0 ? listeningFollowUpMs : 0
+}
+
 export function wakeWordHint(wakeWord) {
   const label = wakeWordLabel(wakeWord)
   return label

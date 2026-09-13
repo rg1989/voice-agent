@@ -22,7 +22,7 @@ const stopListeningTool = {
   type: 'function',
   function: {
     name: STOP_LISTENING_TOOL_NAME,
-    description: 'Stop listening until the wake word is heard again. Call it immediately, and say nothing, when the user asks you to stop listening, go quiet, or says they are done, in any wording. Do not use it to cancel background work.',
+    description: 'Stop listening until the wake word is heard again. Call it immediately, and say nothing, when the user asks you to stop listening, go quiet, or says they are done, in any wording. A bare “stop” or “wait” only interrupts you: keep listening. Do not use it to cancel background work.',
     parameters: noArguments,
   },
 }
@@ -71,8 +71,10 @@ function silentOutput(runtime, { callId, turnId, callContext, event }, output) {
 
 export function listeningToolHandlers(runtime) {
   return {
+    // Drops only that input: an awake exchange keeps its follow-up window,
+    // without extending it.
     [IGNORE_INPUT_TOOL_NAME]: context => {
-      runtime.listeningGate?.stop('ignored')
+      runtime.listeningGate?.inputIgnored(context.callContext?.responseId || context.event?.response_id)
       return silentOutput(runtime, context, { status: 'ignored' })
     },
     [STOP_LISTENING_TOOL_NAME]: context => {

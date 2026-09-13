@@ -19,7 +19,7 @@ import {
 
 // 拖动过程中只改显示，松手（或键盘松键）才真正保存：每次保存都会重启 Gateway，
 // 按住不放一路重启是不能接受的。
-function TurnSlider({ label, hint, value, min, max, step, disabled, format, onCommit }) {
+function TurnSlider({ label, hint, value, min, max, step, marks, disabled, format, onCommit }) {
   const [dragging, setDragging] = useState(null)
   const shown = dragging === null ? value : dragging
   const commit = () => {
@@ -45,6 +45,9 @@ function TurnSlider({ label, hint, value, min, max, step, disabled, format, onCo
       onKeyUp={commit}
       onBlur={commit}
     />
+    {marks && <span className="settings-slider-marks" aria-hidden="true">
+      {marks.map(mark => <span key={mark}>{mark}</span>)}
+    </span>}
     <small className="settings-hint">{hint}</small>
   </label>
 }
@@ -61,11 +64,11 @@ export function ListeningSettings({ settings, disabled, save }) {
   if (!Array.isArray(settings?.listeningModes)) return null
   const followUp = settings.followUpDefaults || {}
   const followUpMin = Math.max(0, followUp.min ?? 0)
-  const followUpMax = Math.min(15, followUp.max ?? 15)
-  const followUpSeconds = Math.min(
+  const followUpMax = Math.min(10, followUp.max ?? 10)
+  const followUpSeconds = Math.round(Math.min(
     followUpMax,
     Math.max(followUpMin, settings.followUpSeconds ?? followUp.seconds ?? 5),
-  )
+  ))
   return <section className="settings-group">
     <h4>{t('聆听方式')}</h4>
     <p className="settings-hint">{t('麦克风听到的声音什么时候交给语音模型。改完立即生效，不会重启 Gateway。')}</p>
@@ -100,11 +103,12 @@ export function ListeningSettings({ settings, disabled, save }) {
       </div>
       <TurnSlider
         label={t('回答后继续听多久')}
-        hint={t('助手回答完后继续听这么久，过了就要重新说唤醒词。')}
+        hint={t('助手说完后继续听这么久，这段时间里直接说话就能接着聊，过了就要重新说唤醒词。')}
         value={followUpSeconds}
         min={followUpMin}
         max={followUpMax}
         step={1}
+        marks={Array.from({ length: followUpMax - followUpMin + 1 }, (_, index) => followUpMin + index)}
         disabled={disabled}
         format={value => t('{count} 秒', { count: value })}
         onCommit={value => save({ followUpSeconds: value })}

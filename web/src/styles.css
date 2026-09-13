@@ -508,9 +508,37 @@ header .ghost.active { color: white; border-color: #785cf480; background: #785cf
   overflow: hidden;
 }
 
-.hero { flex: 0 0 auto; text-align: center; }
+.hero { flex: 0 0 auto; position: relative; text-align: center; }
 .hero p { margin: 22px 0 7px; color: #8e7ed0; font-size: 9px; letter-spacing: .23em; }
 .hero small { display: block; min-height: 18px; margin-top: 12px; color: #777582; }
+
+/* Follow-up countdown after a reply. Absolute, so it never pushes the conversation down. */
+.follow-up-countdown {
+  position: absolute;
+  left: 50%;
+  bottom: -8px;
+  width: 160px;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: #7c6cf62e;
+  transform: translateX(-50%);
+}
+.follow-up-countdown span {
+  display: block;
+  height: 100%;
+  background: #7c6cf6;
+  transform-origin: left;
+  animation: follow-up-countdown var(--follow-up-ms, 5s) linear forwards;
+}
+@keyframes follow-up-countdown {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* The countdown is information, so keep it, but tick once a second instead of gliding. */
+  .follow-up-countdown span { animation-timing-function: steps(var(--follow-up-steps, 5), end); }
+}
 
 .orb {
   width: 112px; height: 112px; padding: 0; display: grid; place-items: center;
@@ -2338,3 +2366,26 @@ header:has(.workspace-switch) .runtime-status + * { margin-left: auto; }
 }
 
 .settings-slider input[type='range']:disabled { opacity: 0.4; cursor: default; }
+
+/* Stops under the track, centred on the thumb positions (the native thumb is 16px wide). */
+.settings-slider-marks {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 8px;
+  color: #9a9ea7;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.settings-slider-marks span {
+  width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.settings-slider-marks span::before {
+  content: '';
+  width: 1px;
+  height: 4px;
+  margin-bottom: 2px;
+  background: #ffffff40;
+}

@@ -35,11 +35,12 @@ const settings = {
   wakeWord: 'hey_jarvis',
   wakeWords: [
     { id: 'hey_jarvis', label: 'Hey Jarvis' },
-    { id: 'alexa', label: 'Alexa' },
+    { id: 'hey_lisa', label: 'Hey Lisa' },
+    { id: 'hey_megan', label: 'Hey Megan' },
     { id: 'hey_mycroft', label: 'Hey Mycroft' },
   ],
   followUpSeconds: 5,
-  followUpDefaults: { seconds: 5, min: 0, max: 30 },
+  followUpDefaults: { seconds: 5, min: 0, max: 10 },
   cameraEnabled: false,
 }
 
@@ -74,16 +75,24 @@ test('wake word mode adds wake words, the recommendation and a follow-up slider'
       lang === 'en' ? 'Always listening' : '一直在听',
       wakeWord,
       'Hey Jarvis',
-      'Alexa',
+      'Hey Lisa',
+      'Hey Megan',
       'Hey Mycroft',
     ])
     assert.ok(html.includes(`<b>Hey Jarvis</b><small>${recommended}</small>`))
-    assert.ok(html.includes('<b>Alexa</b></button>'))
+    assert.ok(html.includes('<b>Hey Lisa</b></button>'))
     const slider = html.match(/<input type="range"[^>]*>/)?.[0] || ''
     assert.match(slider, /min="0"/)
-    assert.match(slider, /max="15"/)
+    assert.match(slider, /max="10"/)
     assert.match(slider, /step="1"/)
     assert.match(slider, /value="5"/)
+    assert.doesNotMatch(html, /type="number"/)
+    // Visible stops 0..10 under the track.
+    const marks = html.match(/<span class="settings-slider-marks"[^>]*>(.*?)<\/span><small/)?.[1] || ''
+    assert.deepEqual(
+      [...marks.matchAll(/<span>(\d+)<\/span>/g)].map(match => Number(match[1])),
+      [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    )
     assert.ok(html.includes(`<small>${seconds}</small>`))
     assert.doesNotMatch(html, /camera|相机/i)
   }
@@ -93,8 +102,12 @@ test('follow-up falls back to the server default and stays inside the slider ran
   setRuntimeLanguage('en')
   const fallback = markup({ listeningMode: 'wake_word', followUpSeconds: undefined, followUpDefaults: { seconds: 7, min: 0, max: 30 } })
   assert.match(fallback, /value="7"/)
-  const clamped = markup({ listeningMode: 'wake_word', followUpSeconds: 25 })
-  assert.match(clamped, /value="15"/)
+  // An older gateway or config may still allow more than 10 seconds.
+  const clamped = markup({ listeningMode: 'wake_word', followUpSeconds: 25, followUpDefaults: { seconds: 5, min: 0, max: 30 } })
+  assert.match(clamped, /max="10"/)
+  assert.match(clamped, /value="10"/)
+  const rounded = markup({ listeningMode: 'wake_word', followUpSeconds: 4.6 })
+  assert.match(rounded, /value="5"/)
 })
 
 test('renders nothing when the gateway has no listening settings', () => {

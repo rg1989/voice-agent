@@ -63,6 +63,7 @@ function harness({
     announcementQuietMs: 60_000,
     responseContextCleanupMs: 60_000,
     turnCitations,
+    onResponseSettled: (context, id) => calls.push(['settled', id]),
   })
   return {
     runtime,
@@ -414,6 +415,25 @@ test('user interruption confirms an announcement and suppresses late output', ()
     3,
   )
   assert.equal(calls.some(([name]) => name === 'retryMany'), false)
+})
+
+test('a failed answer still playing settles once its playback stops', () => {
+  const { runtime, calls } = harness()
+  const settled = () => calls.filter(([name]) => name === 'settled').length
+  deliver(runtime, {
+    type: 'response.audio.delta',
+    response_id: 'response-1',
+    delta: 'audio',
+    __voiceContext: { turnId: 'turn-1', turnGeneration: 1 },
+  })
+  runtime.startPlayback('response-1')
+  runtime.failResponse({ type: 'error', response_id: 'response-1' })
+  assert.equal(settled(), 1)
+  runtime.cancelPlayback('response-1', { reason: 'provider_content_safety' })
+  assert.deepEqual(calls.filter(([name]) => name === 'settled').at(-1), ['settled', 'response-1'])
+  assert.equal(settled(), 2)
+  runtime.cancelPlayback('response-1')
+  assert.equal(settled(), 2)
 })
 
 test('a provider failure retries an undelivered announcement', () => {

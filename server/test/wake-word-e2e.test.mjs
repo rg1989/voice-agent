@@ -59,11 +59,13 @@ const expectations = {
       'hey-travis-daniel',
       'a-jar-of-peas-samantha',
       'turn-off-the-lights-daniel',
-      'alexa-samantha',
+      'hey-lisa-samantha',
+      'hey-megan-samantha',
       'hey-mycroft-samantha',
     ],
   },
-  alexa: { fires: ['alexa-samantha'], quiet: ['hey-jarvis-samantha'] },
+  hey_lisa: { fires: ['hey-lisa-samantha'], quiet: ['hey-teresa-samantha', 'hey-megan-samantha', 'hey-jarvis-samantha'] },
+  hey_megan: { fires: ['hey-megan-samantha'], quiet: ['hey-morgan-samantha', 'hey-lisa-samantha', 'hey-jarvis-samantha'] },
   hey_mycroft: { fires: ['hey-mycroft-samantha'], quiet: ['hey-jarvis-samantha'] },
 }
 

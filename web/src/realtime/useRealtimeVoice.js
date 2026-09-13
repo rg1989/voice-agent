@@ -226,6 +226,8 @@ export default function useRealtimeVoice({
     wakeWordActive,
     listeningState,
     listeningWakeWord,
+    listeningFollowUpMs,
+    listeningFollowUpKey,
   } = clientState
   const eventRef = useRef(onEvent)
   const inputErrorRef = useRef(onInputError)
@@ -1125,6 +1127,8 @@ export default function useRealtimeVoice({
     wakeWordActive,
     listeningState,
     listeningWakeWord,
+    listeningFollowUpMs,
+    listeningFollowUpKey,
     ownership,
     activateAudio,
     interrupt,

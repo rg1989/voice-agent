@@ -440,7 +440,7 @@ export class RealtimePresentationRuntime {
     if (
       (!context?.hasAudio || failed || context.playbackEnded)
       && !toolFollowUpPending
-    ) this.onResponseSettled(context)
+    ) this.onResponseSettled(context, id)
     if (guardDecision) this.#requestGuardCorrection(guardDecision, context, responseTurnId)
     this.#flushAnnouncementsSoon()
   }
@@ -600,7 +600,7 @@ export class RealtimePresentationRuntime {
       awaitsToolFollowUp(context),
     )
     // Playback can also end before response.done; #responseDone settles then.
-    if (context?.responseDone && !remainsProcessing) this.onResponseSettled(context)
+    if (context?.responseDone && !remainsProcessing) this.onResponseSettled(context, id)
     this.send({
       type: GatewayServerEvent.VOICE_STATE,
       state: this.turns.userSpeaking
@@ -616,6 +616,10 @@ export class RealtimePresentationRuntime {
 
   cancelPlayback(id, { reason = '' } = {}) {
     const context = this.contexts.get(id)
+    // A finished (or failed) answer cut off before its end settles here.
+    const settles = Boolean(
+      context?.responseDone && !context.playbackEnded && !awaitsToolFollowUp(context),
+    )
     this.announcementWindow.finishPlayback(id, {
       awaitsToolFollowUp: awaitsToolFollowUp(context),
     })
@@ -641,6 +645,7 @@ export class RealtimePresentationRuntime {
       context.pendingTranscripts = []
       this.#scheduleContextCleanup(id, context)
     }
+    if (settles) this.onResponseSettled(context, id)
     this.send({
       type: GatewayServerEvent.VOICE_STATE,
       state: this.turns.userSpeaking ? 'listening' : 'idle',
@@ -678,6 +683,9 @@ export class RealtimePresentationRuntime {
           responseId: id,
           turnId: context.turnId || this.turns.turnId,
         })
+        // Settles again once the client's audio has actually stopped.
+        context.responseDone = true
+        context.awaitsToolFollowUp = false
         this.#scheduleContextCleanup(id, context)
       } else if (id) {
         this.contexts.delete(id)
@@ -690,8 +698,8 @@ export class RealtimePresentationRuntime {
         awaitsToolFollowUp: false,
         failed: true,
       })
-      // A failed response settles too; nothing else will.
-      this.onResponseSettled(context)
+      // A failed response settles too.
+      this.onResponseSettled(context, id)
     }
     this.#flushAnnouncementsSoon()
   }

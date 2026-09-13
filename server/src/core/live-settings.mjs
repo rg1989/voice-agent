@@ -5,8 +5,8 @@ import { EventEmitter } from 'node:events'
 // connections read and subscribe to.
 
 export const LISTENING_MODES = Object.freeze(['always', 'wake_word'])
-export const WAKE_WORDS = Object.freeze(['hey_jarvis', 'alexa', 'hey_mycroft'])
-export const FOLLOW_UP_SECONDS_RANGE = Object.freeze({ min: 0, max: 30 })
+export const WAKE_WORDS = Object.freeze(['hey_jarvis', 'hey_lisa', 'hey_megan', 'hey_mycroft'])
+export const FOLLOW_UP_SECONDS_RANGE = Object.freeze({ min: 0, max: 10 })
 
 export const LIVE_SETTINGS_DEFAULTS = Object.freeze({
   listeningMode: 'always',
@@ -28,7 +28,8 @@ function followUpSeconds(value) {
   if (value === null || value === undefined || String(value).trim() === '') return null
   const parsed = Number(value)
   if (!Number.isFinite(parsed)) return null
-  return Math.min(FOLLOW_UP_SECONDS_RANGE.max, Math.max(FOLLOW_UP_SECONDS_RANGE.min, parsed))
+  // Whole seconds; an older, longer value clamps to the maximum.
+  return Math.min(FOLLOW_UP_SECONDS_RANGE.max, Math.max(FOLLOW_UP_SECONDS_RANGE.min, Math.round(parsed)))
 }
 
 // Invalid values fall back field by field, so one bad key never resets the rest.

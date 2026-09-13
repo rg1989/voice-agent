@@ -23,9 +23,13 @@ test('live settings parse config.env values and fall back per invalid field', ()
   }), {
     listeningMode: 'wake_word',
     wakeWord: 'hey_jarvis',
-    followUpSeconds: 30,
+    followUpSeconds: 10,
     cameraEnabled: true,
   })
+})
+
+test('a saved wake word that is no longer offered falls back to Hey Jarvis', () => {
+  assert.equal(liveSettingsFromEnvironment({ QWEN_AUDIO_WAKE_WORD: 'alexa' }).wakeWord, 'hey_jarvis')
 })
 
 test('the store seeds from config and emits change only when a value changes', () => {
@@ -40,10 +44,13 @@ test('the store seeds from config and emits change only when a value changes', (
   store.on('change', (next, previous, changed) => events.push({ next, previous, changed }))
 
   assert.deepEqual(store.update({ listeningMode: 'wake_word', voice: 'Aiden' }), [])
-  assert.deepEqual(store.update({ wakeWord: 'alexa', followUpSeconds: 'soon' }), ['wakeWord'])
+  assert.deepEqual(store.update({ wakeWord: 'hey_megan', followUpSeconds: 'soon' }), ['wakeWord'])
   assert.equal(events.length, 1)
   assert.equal(events[0].previous.wakeWord, 'hey_jarvis')
-  assert.equal(events[0].next.wakeWord, 'alexa')
+  assert.equal(events[0].next.wakeWord, 'hey_megan')
   // An invalid value keeps the current one rather than resetting to the default.
   assert.equal(store.get().followUpSeconds, 8)
+  // Whole seconds only.
+  assert.deepEqual(store.update({ followUpSeconds: 6.6 }), ['followUpSeconds'])
+  assert.equal(store.get().followUpSeconds, 7)
 })

@@ -24,11 +24,12 @@ test('settings expose the listening, wake word, follow-up and camera options', (
   assert.equal(settings.wakeWord, 'hey_jarvis')
   assert.deepEqual(settings.wakeWords, [
     { id: 'hey_jarvis', label: 'Hey Jarvis' },
-    { id: 'alexa', label: 'Alexa' },
+    { id: 'hey_lisa', label: 'Hey Lisa' },
+    { id: 'hey_megan', label: 'Hey Megan' },
     { id: 'hey_mycroft', label: 'Hey Mycroft' },
   ])
   assert.equal(settings.followUpSeconds, 5)
-  assert.deepEqual(settings.followUpDefaults, { seconds: 5, min: 0, max: 30 })
+  assert.deepEqual(settings.followUpDefaults, { seconds: 5, min: 0, max: 10 })
   assert.equal(settings.cameraEnabled, false)
 })
 
@@ -43,13 +44,16 @@ test('saving the live settings persists them to config.env', () => {
   const file = readFileSync(join(configDirectory, 'config.env'), 'utf8')
   assert.match(file, /^QWEN_AUDIO_LISTENING_MODE=wake_word$/m)
   assert.match(file, /^QWEN_AUDIO_WAKE_WORD=hey_mycroft$/m)
-  assert.match(file, /^QWEN_AUDIO_FOLLOW_UP_SECONDS=30$/m)
+  assert.match(file, /^QWEN_AUDIO_FOLLOW_UP_SECONDS=10$/m)
   assert.match(file, /^QWEN_AUDIO_CAMERA_ENABLED=true$/m)
   const settings = readRuntimeSettings()
   assert.equal(settings.listeningMode, 'wake_word')
   assert.equal(settings.wakeWord, 'hey_mycroft')
-  assert.equal(settings.followUpSeconds, 30)
+  assert.equal(settings.followUpSeconds, 10)
   assert.equal(settings.cameraEnabled, true)
+  // Whole seconds only.
+  updateRuntimeSettings({ followUpSeconds: 6.6 })
+  assert.match(readFileSync(join(configDirectory, 'config.env'), 'utf8'), /^QWEN_AUDIO_FOLLOW_UP_SECONDS=7$/m)
 })
 
 test('invalid live settings are rejected', () => {
@@ -73,7 +77,7 @@ test('a restart reads the live settings from config.env, not the inherited env',
   const env = restartEnvironment({
     PATH: '/usr/bin',
     QWEN_AUDIO_LISTENING_MODE: 'always',
-    QWEN_AUDIO_WAKE_WORD: 'alexa',
+    QWEN_AUDIO_WAKE_WORD: 'hey_lisa',
     QWEN_AUDIO_FOLLOW_UP_SECONDS: '5',
     QWEN_AUDIO_CAMERA_ENABLED: 'false',
   })

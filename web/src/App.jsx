@@ -48,7 +48,7 @@ import useRealtimeVoice, {
   realtimeModelStatus,
   shouldClaimReleasedVoice,
 } from './realtime/useRealtimeVoice.js'
-import { shouldPlayWakeChime, wakeWordArmed, wakeWordHint } from './listening.js'
+import { followUpCountdownMs, shouldPlayWakeChime, wakeWordArmed, wakeWordHint } from './listening.js'
 import { requestedSessionId } from './session.js'
 import { initialVoiceEnabled } from './voice-defaults.js'
 import {
@@ -905,6 +905,12 @@ export default function App() {
     voiceEnabled,
     visualState: orbVisualState,
   })
+  // Web only: after a reply the gateway keeps listening for a few seconds; the
+  // bar under the status runs that countdown down.
+  const followUpMs = desktopOrbMode ? 0 : followUpCountdownMs({
+    listeningFollowUpMs: voice.listeningFollowUpMs,
+    voiceEnabled,
+  })
   const authorizationTask = agentTasks.find(
     task => task.authorization?.status === 'pending',
   )
@@ -1513,7 +1519,19 @@ export default function App() {
           <span />
         </button>
         <p>VOICE FRONTEND</p>
-        <small>{voice.error || (wakeArmed ? wakeWordHint(voice.listeningWakeWord) : activity)}</small>
+        <small>{voice.error || (wakeArmed
+          ? wakeWordHint(voice.listeningWakeWord)
+          : followUpMs ? t('还在听，接着说吧') : activity)}</small>
+        {followUpMs > 0 && <div
+          key={voice.listeningFollowUpKey}
+          className="follow-up-countdown"
+          role="progressbar"
+          aria-label={t('还在听')}
+          style={{
+            '--follow-up-ms': `${followUpMs}ms`,
+            '--follow-up-steps': Math.max(1, Math.round(followUpMs / 1000)),
+          }}
+        ><span /></div>}
       </div>
 
       <div

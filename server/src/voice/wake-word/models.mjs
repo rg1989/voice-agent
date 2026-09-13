@@ -14,6 +14,10 @@ import { pipeline } from 'node:stream/promises'
 // openWakeWord's pre-trained ONNX models are hosted as assets of this release.
 export const WAKE_WORD_RELEASE = 'v0.5.1'
 const RELEASE_URL = `https://github.com/dscripka/openWakeWord/releases/download/${WAKE_WORD_RELEASE}`
+// Female-name classifiers come from a community collection (MIT), pinned to
+// one commit; the commit in their file names keeps them apart from release assets.
+const COMMUNITY_COMMIT = '8bcd2f20bb7b76c351b2eff871fa1ce873fe9be2'
+const COMMUNITY_URL = `https://raw.githubusercontent.com/fwartner/home-assistant-wakewords-collection/${COMMUNITY_COMMIT}/en`
 
 const FEATURE_MODELS = Object.freeze({
   melspectrogram: {
@@ -31,9 +35,15 @@ export const WAKE_WORD_MODELS = Object.freeze({
     file: 'hey_jarvis_v0.1.onnx',
     sha256: '94a13cfe60075b132f6a472e7e462e8123ee70861bc3fb58434a73712ee0d2cb',
   },
-  alexa: {
-    file: 'alexa_v0.1.onnx',
-    sha256: '6ff566a01d12670e8d9e3c59da32651db1575d17272a601b7f8a39283dfbae3e',
+  hey_lisa: {
+    file: 'hey_lisa_8bcd2f20.onnx',
+    url: `${COMMUNITY_URL}/hey_lisa/hey_lisa.onnx`,
+    sha256: '6f6260aa0ba93941b138e374631d539b6ead160c6737952c30879cd74000e501',
+  },
+  hey_megan: {
+    file: 'hey_megan_8bcd2f20.onnx',
+    url: `${COMMUNITY_URL}/hey_megan/hey_megan.onnx`,
+    sha256: '3fc86748753c120a75caca05e6568a727d18160311c2c891026752648312bfe7',
   },
   hey_mycroft: {
     file: 'hey_mycroft_v0.1.onnx',
@@ -58,7 +68,7 @@ async function sha256(path) {
 async function download(model, target, fetchImpl) {
   const staging = `${target}.${process.pid}-${Date.now()}.partial`
   try {
-    const response = await fetchImpl(`${RELEASE_URL}/${model.file}`)
+    const response = await fetchImpl(model.url || `${RELEASE_URL}/${model.file}`)
     if (!response.ok || !response.body) {
       throw new Error(`Wake word model download failed: ${model.file} (HTTP ${response.status})`)
     }

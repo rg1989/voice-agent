@@ -3,6 +3,7 @@ import test from 'node:test'
 import { setRuntimeLanguage } from '../src/i18n.js'
 import {
   RECOMMENDED_WAKE_WORD,
+  followUpCountdownMs,
   shouldPlayWakeChime,
   wakeWordArmed,
   wakeWordHint,
@@ -11,7 +12,7 @@ import {
 
 test('wake word ids read like the gateway labels', () => {
   assert.equal(wakeWordLabel('hey_jarvis'), 'Hey Jarvis')
-  assert.equal(wakeWordLabel('alexa'), 'Alexa')
+  assert.equal(wakeWordLabel('hey_lisa'), 'Hey Lisa')
   assert.equal(wakeWordLabel('hey_mycroft'), 'Hey Mycroft')
   assert.equal(wakeWordLabel(''), '')
   assert.equal(RECOMMENDED_WAKE_WORD, 'hey_jarvis')
@@ -26,6 +27,13 @@ test('armed presentation needs the microphone on and an otherwise idle orb', () 
   assert.equal(wakeWordArmed({ ...armed, listeningState: 'awake' }), false)
   assert.equal(wakeWordArmed({ ...armed, listeningState: 'always' }), false)
   assert.equal(wakeWordArmed(), false)
+})
+
+test('follow-up countdown shows only while the microphone is on', () => {
+  assert.equal(followUpCountdownMs({ listeningFollowUpMs: 5000, voiceEnabled: true }), 5000)
+  assert.equal(followUpCountdownMs({ listeningFollowUpMs: 5000, voiceEnabled: false }), 0)
+  assert.equal(followUpCountdownMs({ listeningFollowUpMs: 0, voiceEnabled: true }), 0)
+  assert.equal(followUpCountdownMs(), 0)
 })
 
 test('armed hint names the wake word in both languages', () => {
