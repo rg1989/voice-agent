@@ -1608,6 +1608,10 @@ export function attachRealtimeGateway(server, {
       ) realtimeSession.updateAgentContext(getAgentContext())
     }
     liveSettings.on('change', onLiveSettingsChange)
+    // Instructions (and so the persona) only reach the model on session.update,
+    // so a persona saved in Settings resends them once for this open session.
+    const onPersonaChange = () => realtimeSession.updateAgentContext(getAgentContext())
+    liveSettings.on('persona', onPersonaChange)
     // A client connecting mid-suspension has to learn about it before it opens
     // a microphone.
     if (inputSuspended) {
@@ -2271,6 +2275,7 @@ export function attachRealtimeGateway(server, {
       sleepController?.close()
       presenceController.close()
       liveSettings.off('change', onLiveSettingsChange)
+      liveSettings.off('persona', onPersonaChange)
       listeningGate.close()
       realtimeSession.close()
       observeSessionAudio({ type: 'session_ended' })

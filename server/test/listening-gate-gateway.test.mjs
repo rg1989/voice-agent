@@ -349,6 +349,21 @@ test('listening mode changes apply to an open connection', async t => {
   await waitUntil(() => liveSettings.listenerCount('change') === 0)
 })
 
+test('a persona saved in Settings is resent to an open connection', async t => {
+  const { server, frontends, liveSettings } = await startGateway(t, { listeningMode: 'always' })
+  const client = await connect(server)
+  const frontend = frontends[0]
+  const updates = frontend.agentContexts.length
+
+  // Instructions only reach the model on session.update, so an open session
+  // keeps the old persona unless the save refreshes it.
+  liveSettings.emit('persona')
+  await waitUntil(() => frontend.agentContexts.length === updates + 1)
+
+  client.socket.close()
+  await waitUntil(() => liveSettings.listenerCount('persona') === 0)
+})
+
 test('a wake whose request names the wake word is answered', async t => {
   const { server, frontends, detectors } = await startGateway(t)
   const client = await connect(server)
