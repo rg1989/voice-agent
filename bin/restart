@@ -14,9 +14,18 @@ mkdir -p "$REPO/.run"
 # the pid recorded at spawn time is not always the node process that ends up
 # listening -- both produced "restarts" that silently left the old Gateway up
 # while the replacement refused to start.
+# lsof is not installed on every Linux; ss (iproute2) is.
+port_pid () {
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -nP -iTCP:3101 -sTCP:LISTEN -t 2>/dev/null | head -1
+  elif command -v ss >/dev/null 2>&1; then
+    ss -Hltnp 'sport = :3101' 2>/dev/null | grep -o 'pid=[0-9]*' | head -1 | cut -d= -f2
+  fi
+}
+
 stop_gateway () {
   local pid
-  pid="$(lsof -nP -iTCP:3101 -sTCP:LISTEN -t 2>/dev/null | head -1)"
+  pid="$(port_pid)"
   if [ -z "$pid" ] && [ -f "$PIDFILE" ]; then pid="$(cat "$PIDFILE" 2>/dev/null)"; fi
   [ -z "$pid" ] && return 0
   kill -0 "$pid" 2>/dev/null || return 0
@@ -36,7 +45,7 @@ stop_gateway () {
 stop_gateway
 rm -f "$PIDFILE"
 for _ in $(seq 1 40); do
-  lsof -nP -iTCP:3101 -sTCP:LISTEN >/dev/null 2>&1 || break
+  [ -n "$(port_pid)" ] || break
   sleep 0.25
 done
 
@@ -51,7 +60,7 @@ for _ in $(seq 1 400); do
   sleep 0.2
 done
 
-lsof -nP -iTCP:3101 -sTCP:LISTEN -t 2>/dev/null | head -1 > "$PIDFILE"
+port_pid > "$PIDFILE"
 
 if [ "$up" != 1 ]; then
   echo "  gateway FAILED to start. Last log lines:"

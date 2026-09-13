@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Carry this machine's voice-agent setup to another Mac in one encrypted file.
+// Carry this machine's voice-agent setup to another computer in one encrypted file.
 //
 //   node bin/setup-bundle.mjs export [file]   default: ~/Desktop/voice-agent-setup.qwsetup
 //   node bin/setup-bundle.mjs import <file> [--force]
@@ -130,7 +130,7 @@ async function exportBundle(output = join(HOME, 'Desktop/voice-agent-setup.qwset
   mkdirSync(dirname(output), { recursive: true })
   writeFileSync(output, sealed, { mode: 0o600 })
   for (const file of files) console.log(`  + ${file.root === 'omp' ? '~/.omp/agent' : '~/.config/qwaudio'}/${file.path}`)
-  console.log(`Wrote ${output} (${Math.ceil(sealed.length / 1024)} KB). It holds your API keys: copy it by AirDrop or USB, not a shared cloud folder.`)
+  console.log(`Wrote ${output} (${Math.ceil(sealed.length / 1024)} KB). Anyone with this file and its passphrase has your API keys: prefer a USB stick or scp, and if it goes through a cloud drive or chat, send the passphrase another way.`)
 }
 
 function unquote(value) {
@@ -153,7 +153,7 @@ function adaptConfig(text, sourceHome, notes) {
       return `# ${name}=${value}`
     }
     if (name === 'ACP_COMMAND' && path.startsWith('/') && !existsSync(path)) {
-      notes.push(`The brain command ${path} is not installed yet (bin/setup-mac installs Oh My Pi).`)
+      notes.push(`The brain command ${path} is not installed yet (bin/setup installs Oh My Pi).`)
     }
     return `${name}=${value}`
   }).join('\n')

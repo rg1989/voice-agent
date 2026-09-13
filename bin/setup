@@ -1,0 +1,275 @@
+#!/bin/bash
+# Install the voice agent from scratch on macOS or Linux (Intel or ARM), and
+# restore a setup file exported from another machine with
+# `node bin/setup-bundle.mjs export`.
+#
+#   bin/setup ~/Downloads/voice-agent-setup.qwsetup      (from a clone of this repo)
+#   curl -fsSL https://raw.githubusercontent.com/rg1989/voice-agent/main/bin/setup | bash -s -- ~/voice-agent-setup.qwsetup
+#
+# No admin password: Node, Bun and Oh My Pi are installed for this user only.
+# Safe to run again; it updates what is already there.
+#
+# QWAUDIO_DIR               where the code lives (default: the clone this script is
+#                           in, otherwise ~/Documents/Projects/qwen-audio-agent)
+# QWAUDIO_SETUP_NO_START=1  install only: do not stop or start the gateway
+set -euo pipefail
+
+REPO_URL="https://github.com/rg1989/voice-agent"
+OMP_VERSION="18.1.17"
+CONFIG_DIR="${QWAUDIO_CONFIG_DIR:-$HOME/.config/qwaudio}"
+MARKER_NAME=".installed-by-setup"
+OS="$(uname -s)"
+ARCH="$(uname -m)"
+MACOS_NUM=0
+NODE_LINE=24
+NODE_PLATFORM=""
+
+say() { printf '\n==> %s\n' "$*"; }
+note() { printf '    %s\n' "$*"; }
+fail() { printf '\nsetup: %s\n' "$*" >&2; exit 1; }
+
+default_dir() {
+  local here="${BASH_SOURCE[0]:-}" root
+  if [ -n "$here" ] && [ -f "$here" ]; then
+    root="$(cd "$(dirname "$here")/.." && pwd)"
+    if [ -f "$root/bin/setup-bundle.mjs" ]; then printf '%s' "$root"; return; fi
+  fi
+  printf '%s' "$HOME/Documents/Projects/qwen-audio-agent"
+}
+DIR="${QWAUDIO_DIR:-$(default_dir)}"
+
+# Whole script is a function so `curl | bash` reads all of it before running
+# anything: a command that reads stdin would otherwise eat the rest of the script.
+main() {
+  local bundle="${1:-}"
+  [ -z "$bundle" ] || [ -f "$bundle" ] || fail "setup file not found: $bundle"
+  case "$OS-$ARCH" in
+    Darwin-x86_64) NODE_PLATFORM=darwin-x64 ;;
+    Darwin-arm64) NODE_PLATFORM=darwin-arm64 ;;
+    Linux-x86_64) NODE_PLATFORM=linux-x64 ;;
+    Linux-aarch64 | Linux-arm64) NODE_PLATFORM=linux-arm64 ;;
+    *) fail "unsupported system: $OS $ARCH" ;;
+  esac
+  if [ "$OS" = Darwin ]; then check_macos; else check_linux; fi
+
+  install_node
+  install_bun_and_omp
+  # Replacing the code or Oh My Pi's database under a running gateway is asking for trouble.
+  [ "${QWAUDIO_SETUP_NO_START:-}" = 1 ] || stop_gateway
+  fetch_code
+  say "Installing packages and building the web UI (a few minutes)"
+  (cd "$DIR" && ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci --no-audit --no-fund)
+
+  if [ -n "$bundle" ]; then
+    say "Restoring your setup from $bundle"
+    # Under `curl | bash` stdin is the script, so ask for the passphrase on the terminal.
+    if [ -t 0 ] || [ -n "${QWAUDIO_SETUP_PASSPHRASE:-}" ]; then
+      node "$DIR/bin/setup-bundle.mjs" import "$bundle"
+    else
+      node "$DIR/bin/setup-bundle.mjs" import "$bundle" < /dev/tty
+    fi
+    [ -f "$CONFIG_DIR/config.env" ] || fail "the setup file was not restored"
+  elif [ ! -f "$CONFIG_DIR/config.env" ]; then
+    note "No setup file given and no config yet. Run: node $DIR/cli/bin/qwenaudio.mjs config"
+  fi
+  # The gateway caches the login shell PATH; drop it so it sees the new Node and Bun.
+  rm -f "$CONFIG_DIR/cache/login-shell-path.json"
+
+  if [ "${QWAUDIO_SETUP_NO_START:-}" != 1 ] && [ -f "$CONFIG_DIR/config.env" ]; then
+    say "Starting the gateway"
+    "$DIR/bin/restart"
+    open_url "http://127.0.0.1:3101"
+  fi
+
+  say "Done"
+  note "Start or restart any time: $DIR/bin/restart   then open http://127.0.0.1:3101"
+  if [ "$OS" = Darwin ]; then
+    if [ "$MACOS_NUM" -lt 1400 ]; then
+      note "Computer control needs macOS 14 or newer; set it to Off in Settings on this Mac."
+    else
+      note "The first time the agent controls the computer, macOS asks you to allow"
+      note "Accessibility and Screen Recording for Open Computer Use. Allow both."
+    fi
+  else
+    note "Computer control on Linux needs a logged-in desktop session with accessibility"
+    note "(AT-SPI) available. If you will not use it, set it to Off in Settings."
+    note "Voice needs a microphone the browser can use. Linux on MacBook hardware often has no"
+    note "driver for the built-in mic and speakers; a USB or Bluetooth headset avoids that."
+  fi
+  note "Using Claude Code as the brain? Its login is not in the setup file: run 'claude' once and log in."
+}
+
+check_macos() {
+  local version major minor
+  version="$(sw_vers -productVersion)"
+  major="${version%%.*}"
+  minor="$(printf '%s' "$version" | cut -d. -f2)"
+  MACOS_NUM=$((major * 100 + ${minor:-0}))
+  say "macOS $version on $ARCH"
+  # Bun, which runs the Oh My Pi brain, needs macOS 13.
+  [ "$MACOS_NUM" -ge 1300 ] || fail "macOS 13 or newer is required (this Mac has $version)"
+  # Node 24 needs macOS 13.5+; Node 22 covers macOS 13.0-13.4.
+  [ "$MACOS_NUM" -ge 1305 ] || NODE_LINE=22
+}
+
+check_linux() {
+  local name="Linux" missing="" tool glibc major minor
+  if [ -r /etc/os-release ]; then name="$(. /etc/os-release && printf '%s' "${PRETTY_NAME:-Linux}")"; fi
+  say "$name on $ARCH"
+  for tool in curl tar unzip; do
+    command -v "$tool" >/dev/null 2>&1 || missing="$missing $tool"
+  done
+  if [ -n "$missing" ]; then
+    fail "install these first:$missing  (Ubuntu/Debian: sudo apt install$missing   Fedora: sudo dnf install$missing)"
+  fi
+  glibc="$(getconf GNU_LIBC_VERSION 2>/dev/null | awk '{print $2}' || true)"
+  [ -n "$glibc" ] || fail "this Linux does not use glibc (for example Alpine); Node and Bun builds need glibc"
+  major="${glibc%%.*}"
+  minor="$(printf '%s' "$glibc" | cut -d. -f2)"
+  [ $((major * 100 + minor)) -ge 228 ] || fail "glibc $glibc is too old; Node 24 needs 2.28 or newer (Ubuntu 20.04+, Debian 10+, Fedora 29+)"
+}
+
+node_ok() {
+  command -v node >/dev/null 2>&1 && node -e '
+    const [a, b, c] = process.versions.node.split(".").map(Number)
+    process.exit((a === 22 && (b > 22 || (b === 22 && c >= 2))) || (a === 24 && b >= 15) || a >= 26 ? 0 : 1)
+  ' 2>/dev/null
+}
+
+sha256_check() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum -c -; else shasum -a 256 -c -; fi
+}
+
+install_node() {
+  # A Node this script installed earlier, in a shell that has not loaded the profile.
+  if [ -x "$HOME/.local/node/bin/node" ]; then export PATH="$HOME/.local/node/bin:$PATH"; fi
+  if node_ok; then say "Node $(node -v) is already installed"; return; fi
+  local version name tmp
+  version="$(curl -fsSL https://nodejs.org/dist/index.json | grep -o "\"version\":\"v$NODE_LINE\.[0-9]*\.[0-9]*\"" | head -1 | cut -d'"' -f4 || true)"
+  [ -n "$version" ] || fail "could not look up the latest Node $NODE_LINE"
+  say "Installing Node $version for this user"
+  name="node-$version-$NODE_PLATFORM"
+  tmp="$(mktemp -d)"
+  curl -fsSL "https://nodejs.org/dist/$version/$name.tar.gz" -o "$tmp/$name.tar.gz"
+  curl -fsSL "https://nodejs.org/dist/$version/SHASUMS256.txt" -o "$tmp/SHASUMS256.txt"
+  (cd "$tmp" && grep " $name.tar.gz\$" SHASUMS256.txt | sha256_check) >/dev/null || fail "Node download failed its checksum"
+  mkdir -p "$HOME/.local"
+  rm -rf "${HOME:?}/.local/$name"
+  tar -xzf "$tmp/$name.tar.gz" -C "$HOME/.local"
+  ln -sfn "$HOME/.local/$name" "$HOME/.local/node"
+  rm -rf "$tmp"
+  add_to_path "$HOME/.local/node/bin"
+  node_ok || fail "Node $version installed but is not usable"
+}
+
+bun_ok() {
+  node -e '
+    const [a, b, c] = process.argv[1].split(".").map(Number)
+    process.exit(a > 1 || (a === 1 && (b > 3 || (b === 3 && c >= 14))) ? 0 : 1)
+  ' "$("$BUN_INSTALL/bin/bun" --version 2>/dev/null || echo 0.0.0)"
+}
+
+install_bun_and_omp() {
+  export BUN_INSTALL="${BUN_INSTALL:-$HOME/.bun}"
+  if [ ! -x "$BUN_INSTALL/bin/bun" ]; then
+    say "Installing Bun"
+    curl -fsSL https://bun.sh/install | bash >/dev/null
+  elif ! bun_ok; then
+    say "Upgrading Bun (Oh My Pi needs 1.3.14 or newer)"
+    "$BUN_INSTALL/bin/bun" upgrade
+  fi
+  add_to_path "$BUN_INSTALL/bin"
+  if [ "$("$BUN_INSTALL/bin/omp" --version 2>/dev/null || true)" != "omp/$OMP_VERSION" ]; then
+    say "Installing Oh My Pi $OMP_VERSION"
+    "$BUN_INSTALL/bin/bun" install -g "@oh-my-pi/pi-coding-agent@$OMP_VERSION"
+  fi
+  "$BUN_INSTALL/bin/omp" --version >/dev/null || fail "Oh My Pi did not install"
+}
+
+# Startup files for future shells: the gateway reads PATH from `$SHELL -l -i`, and
+# a terminal opened later reads its own.
+profile_files() {
+  case "$(basename "${SHELL:-/bin/bash}")" in
+    zsh) printf '%s\n' "$HOME/.zprofile" ;;
+    bash)
+      if [ -f "$HOME/.bash_profile" ]; then printf '%s\n' "$HOME/.bash_profile"; else printf '%s\n' "$HOME/.profile"; fi
+      printf '%s\n' "$HOME/.bashrc"
+      ;;
+    *) printf '%s\n' "$HOME/.profile" ;;
+  esac
+}
+
+add_to_path() {
+  local dir="$1" line file
+  line="export PATH=\"$dir:\$PATH\""
+  export PATH="$dir:$PATH"
+  profile_files | while IFS= read -r file; do
+    touch "$file"
+    grep -qF "$line" "$file" || printf '\n%s\n' "$line" >> "$file"
+  done
+}
+
+port_pid() {
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -nP -iTCP:3101 -sTCP:LISTEN -t 2>/dev/null | head -1 || true
+  elif command -v ss >/dev/null 2>&1; then
+    ss -Hltnp 'sport = :3101' 2>/dev/null | grep -o 'pid=[0-9]*' | head -1 | cut -d= -f2 || true
+  fi
+}
+
+stop_gateway() {
+  local pid
+  pid="$(port_pid)"
+  [ -n "$pid" ] || return 0
+  say "Stopping the running gateway"
+  kill "$pid" 2>/dev/null || true
+  for _ in $(seq 1 80); do
+    kill -0 "$pid" 2>/dev/null || return 0
+    sleep 0.25
+  done
+  fail "the running gateway (pid $pid) did not stop; quit it and run this again"
+}
+
+have_git() {
+  # On a Mac without the Xcode command line tools, /usr/bin/git is only an installer stub.
+  if [ "$OS" = Darwin ]; then xcode-select -p >/dev/null 2>&1; else command -v git >/dev/null 2>&1; fi
+}
+
+fetch_code() {
+  if have_git && [ -d "$DIR/.git" ]; then
+    say "Updating the code in $DIR"
+    git -C "$DIR" pull --ff-only
+  elif have_git && [ ! -e "$DIR" ]; then
+    say "Downloading the code to $DIR"
+    mkdir -p "$(dirname "$DIR")"
+    git clone "$REPO_URL.git" "$DIR"
+  else
+    # No git: use the code tarball. That replaces the folder's contents, so only
+    # do it in a folder this script made.
+    local marker="$DIR/$MARKER_NAME" tmp
+    if [ -e "$DIR" ] && [ ! -f "$marker" ] && [ -n "$(ls -A "$DIR" 2>/dev/null)" ]; then
+      fail "$DIR already has files this script did not put there. To update a git checkout, install git (on a Mac: xcode-select --install); otherwise set QWAUDIO_DIR to a new folder."
+    fi
+    say "Downloading the code to $DIR"
+    tmp="$(mktemp -d)"
+    curl -fsSL "$REPO_URL/archive/refs/heads/main.tar.gz" | tar -xz -C "$tmp" --strip-components 1
+    mkdir -p "$DIR"
+    # Replace the code, keep installed packages and logs.
+    find "$DIR" -mindepth 1 -maxdepth 1 ! -name node_modules ! -name .run ! -name "$MARKER_NAME" -exec rm -rf {} +
+    cp -R "$tmp/." "$DIR/"
+    touch "$marker"
+    rm -rf "$tmp"
+  fi
+}
+
+open_url() {
+  if [ "$OS" = Darwin ]; then
+    open "$1" || true
+  elif command -v xdg-open >/dev/null 2>&1 && [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
+    xdg-open "$1" >/dev/null 2>&1 || true
+  fi
+}
+
+# exit on the same line: bash reads a script as it runs it, and the update step
+# can replace this very file, so nothing after main may be read again.
+main "$@"; exit

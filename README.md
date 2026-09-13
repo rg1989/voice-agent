@@ -113,10 +113,11 @@ npm install -g qwen-audio-agent
 For building from source, installing from GitHub, and obtaining a DashScope
 API Key, see the [installation guide](docs/getting-started/install.md).
 
-### Moving to another Mac
+### Moving to another computer
 
-To set up a second Mac (Intel or Apple silicon) with the same keys and settings,
-export them once on the machine that already works:
+To set up a second machine (macOS 13+ or Linux with glibc 2.28+, Intel or ARM)
+with the same keys and settings, export them once on the machine that already
+works:
 
 ```bash
 node bin/setup-bundle.mjs export
@@ -125,18 +126,26 @@ node bin/setup-bundle.mjs export
 This asks for a passphrase and writes an encrypted
 `~/Desktop/voice-agent-setup.qwsetup` with the gateway config (API keys, voice,
 brain, settings), the assistant's persona and memory notes, and Oh My Pi's
-providers, logins and skills. Copy it to the new Mac by AirDrop or USB, then run
-there:
+providers, logins and skills. Copy it to the other machine (USB stick, `scp`, or
+a cloud drive with the passphrase sent separately), then run from a clone of
+this repo there:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rg1989/voice-agent/main/bin/setup-mac | bash -s -- ~/Downloads/voice-agent-setup.qwsetup
+bin/setup ~/voice-agent-setup.qwsetup
 ```
 
-It installs Node, Bun and Oh My Pi for your user (no admin password), downloads
-the code to `~/Documents/Projects/qwen-audio-agent`, restores the setup file and
-starts the gateway at http://127.0.0.1:3101. Conversation history and the Claude
-Code login (kept in the Keychain) do not move; run `claude` once if you use it as
-the brain. Computer control needs macOS 14 or newer.
+or without a clone:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rg1989/voice-agent/main/bin/setup | bash -s -- ~/voice-agent-setup.qwsetup
+```
+
+It installs Node, Bun and Oh My Pi for your user (no admin password), builds the
+app, restores the setup file and starts the gateway at http://127.0.0.1:3101.
+On Linux it needs `curl`, `tar` and `unzip` first (`sudo apt install curl unzip`).
+Conversation history and the Claude Code login do not move; run `claude` once if
+you use it as the brain. Computer control needs macOS 14+, or on Linux a desktop
+session with AT-SPI accessibility.
 
 ## Quick Start
 
