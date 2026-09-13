@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto'
 import {
   chmodSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   writeFileSync,
 } from 'node:fs'
@@ -205,6 +206,30 @@ function ensureAssistantProfile(configDirectory, templatePath) {
   return targetPath
 }
 
+// One character per voice, copied once like ASSISTANT.md so edits survive updates.
+function ensurePersonas(configDirectory, templateDirectory) {
+  let names
+  try {
+    names = readdirSync(templateDirectory).filter(name => name.endsWith('.md'))
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error
+    return
+  }
+  const targetDirectory = resolve(configDirectory, 'personas')
+  mkdirSync(targetDirectory, { recursive: true, mode: 0o700 })
+  for (const name of names) {
+    try {
+      writeFileSync(resolve(targetDirectory, name), readFileSync(resolve(templateDirectory, name), 'utf8'), {
+        encoding: 'utf8',
+        flag: 'wx',
+        mode: 0o600,
+      })
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error
+    }
+  }
+}
+
 function ensureLongTermMemory(dataDirectory) {
   const memoryPath = resolve(dataDirectory, 'MEMORY.md')
   try {
@@ -287,6 +312,7 @@ export function loadRuntimeEnvironment({
         configDirectory,
         resolve(root, 'config/frontend-agent/ASSISTANT.md'),
       )
+  if (!readOnly) ensurePersonas(configDirectory, resolve(root, 'config/frontend-agent/personas'))
   const frontendMemoryPath = readOnly
     ? resolve(dataDirectory, 'MEMORY.md')
     : ensureLongTermMemory(dataDirectory)

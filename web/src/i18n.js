@@ -16,7 +16,7 @@ const translations = {
   '机械音效': 'Robotic voice',
   '给助手的声音加上轻微的变调、金属回声和扫频，听起来像机器。改完立即生效，不会重启 Gateway。': 'Adds a slight pitch lift, a metallic echo and a slow sweep so the assistant sounds synthetic. Applies at once, without restarting the gateway.',
   '人设': 'Persona',
-  '语音和大脑共用同一个人设：名字、性格、语言和说话风格。保存后下一次回答就生效，不会重启 Gateway。': 'One persona for both the voice and the brain: name, personality, language and speaking style. Saving applies it from the next reply, without restarting the gateway.',
+  '每个音色都有自己的角色，语音和大脑都会按这个角色说话。这里编辑的是 {voice} 的角色。保存后下一次回答就生效，不会重启 Gateway。': 'Each voice has its own character, and both the voice and the brain speak as it. This is the character for {voice}. Saving applies it from the next reply, without restarting the gateway.',
   '保存人设': 'Save persona',
   '电脑控制': 'Computer control',
   '后台 Agent 能不能看你的屏幕、用你的鼠标和键盘，以及什么时候要先问你。改完会重启 Gateway。': 'Whether the agent may see your screen and use your mouse and keyboard, and when it has to ask you first. Changing this restarts the gateway.',

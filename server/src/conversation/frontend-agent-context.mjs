@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { config } from '../core/config.mjs'
+import { readPersona } from '../core/persona.mjs'
 import { recentConversationMessages } from '../../../shared/conversation-history.mjs'
 
 const PROMPT_FILE = 'PROMPT.md'
@@ -84,10 +85,9 @@ export function loadFrontendPrompt() {
 }
 
 export function loadAssistantProfile() {
-  const content = readFileSync(
-    config.assistantProfilePath || resolve(config.frontendPromptDir, ASSISTANT_FILE),
-    'utf8',
-  ).trim()
+  // The selected voice's character, else ASSISTANT.md, else the packaged default.
+  const content = readPersona()
+    || readFileSync(resolve(config.frontendPromptDir, ASSISTANT_FILE), 'utf8').trim()
   if (!content) throw new Error(`${ASSISTANT_FILE} must not be empty`)
   return [...content].slice(0, MAX_ASSISTANT_CHARS).join('')
 }

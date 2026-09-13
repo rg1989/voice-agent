@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { readFileSync } from 'node:fs'
 import { AgentError } from '../../agent-error.mjs'
-import { config } from '../../../core/config.mjs'
+import { readPersona } from '../../../core/persona.mjs'
 import { BackendEventType, backendEvent } from '../../../core/backend-events.mjs'
 import {
   acpBackendProfile,
@@ -53,16 +52,6 @@ const MAX_DELEGATION_RECENT_UPDATES = 5
 // Persistent coordinator Sessions are valid only for the contract that
 // created them. Project Sessions are user work and remain independent.
 const COORDINATOR_CONTRACT_VERSION = 6
-
-// The ASSISTANT.md the voice reads every turn. Read per task, so a persona
-// saved in Settings reaches the next task without a restart.
-function sharedPersona() {
-  try {
-    return readFileSync(config.assistantProfilePath, 'utf8').trim()
-  } catch {
-    return ''
-  }
-}
 
 export { acpBackendProfile } from './backend-profile.mjs'
 
@@ -1304,7 +1293,8 @@ export class AcpBackendAdapter {
       const prompt = buildAcpCoordinatorInstruction({
         ...work,
         objective,
-        persona: sharedPersona(),
+        // The selected voice's character, read per task so Settings edits apply at once.
+        persona: readPersona(),
         includeStableInstructions: !this.coordinatorUsesMcpInstructions(),
       })
       const run = message => this.runCoordinator(message, {

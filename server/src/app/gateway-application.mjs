@@ -734,7 +734,8 @@ app.post('/api/settings', (req, res) => {
   }
   const settings = readRuntimeSettings()
   liveSettings.update(settings)
-  if (result.changed.includes('persona')) liveSettings.emit('persona')
+  // Each voice has its own character, so a new voice is a new persona too.
+  if (result.changed.includes('persona') || result.changed.includes('voice')) liveSettings.emit('persona')
   // The voice applies live over session.output_voice.update, so persisting it
   // is all the server has to do; restarting would drop the conversation for
   // no reason. Brain and folder are read at startup and still need one.

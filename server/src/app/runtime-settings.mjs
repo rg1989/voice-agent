@@ -1,9 +1,10 @@
 import { spawn } from 'node:child_process'
-import { readFileSync, writeFileSync, chmodSync, existsSync, statSync, readdirSync } from 'node:fs'
+import { readFileSync, writeFileSync, chmodSync, existsSync, statSync, readdirSync, mkdirSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { backendWorkspaceEnvironmentKeys, config } from '../core/config.mjs'
 import { computerUseMode } from '../core/computer-use-mode.mjs'
+import { personaPath, readPersona, selectedVoice } from '../core/persona.mjs'
 import {
   FOLLOW_UP_SECONDS_RANGE,
   LIVE_SETTING_KEYS,
@@ -131,17 +132,9 @@ function configPath() {
   return resolve(config.configDirectory, 'config.env')
 }
 
-// The one persona the voice and the brain both speak as. The file is the
-// setting: frontend-tools.mjs reads it per voice turn, backend-adapter.mjs per task.
-const PERSONA_MAX_CHARS = 4000 // the voice truncates ASSISTANT.md past this
-
-function readPersona() {
-  try {
-    return readFileSync(config.assistantProfilePath, 'utf8').trim()
-  } catch {
-    return ''
-  }
-}
+// The selected voice's character, which the voice and the brain both speak as.
+// The file is the setting: core/persona.mjs resolves it per voice turn and per task.
+const PERSONA_MAX_CHARS = 4000 // the voice truncates a persona past this
 
 function readConfigLines() {
   const path = configPath()
@@ -218,6 +211,7 @@ export function readRuntimeSettings() {
     cameraEnabled: live.cameraEnabled,
     roboticVoice: live.roboticVoice,
     persona: readPersona(),
+    personaVoice: selectedVoice(),
   }
 }
 
@@ -359,7 +353,7 @@ export function updateRuntimeSettings(patch = {}) {
 
   if (typeof patch.persona === 'string') {
     const persona = patch.persona.trim()
-    // An empty ASSISTANT.md stops the voice from building its instructions.
+    // An empty persona stops the voice from building its instructions.
     if (!persona) {
       throw Object.assign(new Error('persona must not be empty'), { status: 400 })
     }
@@ -369,8 +363,10 @@ export function updateRuntimeSettings(patch = {}) {
         { status: 400 },
       )
     }
-    writeFileSync(config.assistantProfilePath, `${persona}\n`, { encoding: 'utf8', mode: 0o600 })
-    chmodSync(config.assistantProfilePath, 0o600)
+    const path = personaPath()
+    mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
+    writeFileSync(path, `${persona}\n`, { encoding: 'utf8', mode: 0o600 })
+    chmodSync(path, 0o600)
     changed.push('persona')
   }
 

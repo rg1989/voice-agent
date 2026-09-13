@@ -76,15 +76,28 @@ test('only patches made entirely of live keys skip the restart', () => {
   assert.equal(settingsNeedRestart(['turnThreshold']), true)
 })
 
-test('the persona is saved to ASSISTANT.md and applies without a restart', async () => {
+test('each voice keeps its own persona, saved without a restart', async () => {
   const { config } = await import('../src/core/config.mjs')
-  // Never write the developer's real persona.
-  assert.ok(config.assistantProfilePath.startsWith(configDirectory), config.assistantProfilePath)
-  const result = updateRuntimeSettings({ persona: '  ## Identity\n\nYour name is Nova.  ' })
+  const { personaPath, readPersona } = await import('../src/core/persona.mjs')
+  // Never write the developer's real personas.
+  assert.ok(config.configDirectory.startsWith(configDirectory), config.configDirectory)
+
+  updateRuntimeSettings({ voice: 'Siiri' })
+  assert.equal(personaPath(), join(configDirectory, 'personas', 'Siiri.md'))
+  const result = updateRuntimeSettings({ persona: '  ## Identity\n\nYou are GLaDOS.  ' })
   assert.deepEqual(result.changed, ['persona'])
-  assert.equal(readFileSync(config.assistantProfilePath, 'utf8'), '## Identity\n\nYour name is Nova.\n')
-  assert.equal(readRuntimeSettings().persona, '## Identity\n\nYour name is Nova.')
-  assert.equal(settingsNeedRestart(['persona']), false)
+  assert.equal(readFileSync(personaPath(), 'utf8'), '## Identity\n\nYou are GLaDOS.\n')
+  assert.equal(readRuntimeSettings().persona, '## Identity\n\nYou are GLaDOS.')
+  assert.equal(readRuntimeSettings().personaVoice, 'Siiri')
+
+  updateRuntimeSettings({ voice: 'Mione' })
+  assert.doesNotMatch(readRuntimeSettings().persona, /GLaDOS/)
+  // A voice without its own file speaks as ASSISTANT.md.
+  assert.equal(readPersona('Ethan'), readFileSync(config.assistantProfilePath, 'utf8').trim())
+  updateRuntimeSettings({ voice: 'Siiri' })
+  assert.match(readRuntimeSettings().persona, /GLaDOS/)
+
+  assert.equal(settingsNeedRestart(['persona', 'voice']), false)
   for (const persona of ['   ', 'x'.repeat(4001)]) {
     assert.throws(() => updateRuntimeSettings({ persona }), error => error.status === 400)
   }

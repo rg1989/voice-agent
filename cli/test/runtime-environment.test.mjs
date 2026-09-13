@@ -197,6 +197,27 @@ test('copies the assistant profile template once and preserves user customizatio
   assertPrivateMode(second.assistantProfilePath)
 })
 
+test('copies each voice persona template once and preserves edits', () => {
+  const target = fixture()
+  const templates = resolve(target.root, 'config/frontend-agent/personas')
+  mkdirSync(templates, { recursive: true })
+  writeFileSync(resolve(templates, 'Siiri.md'), '## Identity\n\nYou are GLaDOS.\n')
+  const load = () => loadRuntimeEnvironment({
+    root: target.root,
+    homeDirectory: target.homeDirectory,
+    env: {},
+    generateSecret: false,
+  })
+
+  const persona = resolve(load().configDirectory, 'personas/Siiri.md')
+  assert.match(readFileSync(persona, 'utf8'), /GLaDOS/)
+  assertPrivateMode(persona)
+
+  writeFileSync(persona, '## Identity\n\nYou are Caroline.\n')
+  load()
+  assert.match(readFileSync(persona, 'utf8'), /Caroline/)
+})
+
 test('supports an explicit cross-platform user config directory', () => {
   const directory = resolve('/tmp/qwaudio-custom')
   assert.equal(

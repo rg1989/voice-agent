@@ -142,6 +142,8 @@ export default function SettingsPanel({ onClose, setOutputVoice }) {
     setError('')
     try {
       const payload = await saveSettings(patch)
+      // A new voice brings its own character; drop any draft of the old one.
+      if (patch.voice) setPersonaEdit(null)
       if (patch.voice && !payload.restarting && setOutputVoice) {
         await setOutputVoice(patch.voice).catch(() => {})
       }
@@ -198,7 +200,7 @@ export default function SettingsPanel({ onClose, setOutputVoice }) {
 
         <section className="settings-group">
           <h4>{t('人设')}</h4>
-          <p className="settings-hint">{t('语音和大脑共用同一个人设：名字、性格、语言和说话风格。保存后下一次回答就生效，不会重启 Gateway。')}</p>
+          <p className="settings-hint">{t('每个音色都有自己的角色，语音和大脑都会按这个角色说话。这里编辑的是 {voice} 的角色。保存后下一次回答就生效，不会重启 Gateway。', { voice: settings.personaVoice || settings.voice || '—' })}</p>
           <form
             className="settings-persona"
             onSubmit={event => {
