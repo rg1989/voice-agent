@@ -57,6 +57,8 @@ main() {
   # Replacing the code or Oh My Pi's database under a running gateway is asking for trouble.
   [ "${QWAUDIO_SETUP_NO_START:-}" = 1 ] || stop_gateway
   fetch_code
+  # A zip download can lose the executable bits.
+  chmod +x "$DIR"/bin/* "$DIR"/install 2>/dev/null || true
   say "Installing packages and building the web UI (a few minutes)"
   (cd "$DIR" && ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci --no-audit --no-fund)
 
@@ -76,7 +78,7 @@ main() {
 
   if [ "${QWAUDIO_SETUP_NO_START:-}" != 1 ] && [ -f "$CONFIG_DIR/config.env" ]; then
     say "Starting the gateway"
-    "$DIR/bin/restart"
+    bash "$DIR/bin/restart"
     open_url "http://127.0.0.1:3101"
   fi
 
@@ -259,6 +261,9 @@ fetch_code() {
     say "Downloading the code to $DIR"
     mkdir -p "$(dirname "$DIR")"
     git clone "$REPO_URL.git" "$DIR"
+  elif [ -f "$DIR/bin/setup-bundle.mjs" ] && [ ! -f "$DIR/$MARKER_NAME" ]; then
+    # A downloaded copy (zip) without git history: use it as it is.
+    say "Using the code in $DIR"
   else
     # No git: use the code tarball. That replaces the folder's contents, so only
     # do it in a folder this script made.
