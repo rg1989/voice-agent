@@ -73,6 +73,20 @@ test('only patches made entirely of live keys skip the restart', () => {
   assert.equal(settingsNeedRestart(['turnThreshold']), true)
 })
 
+test('the persona is saved to ASSISTANT.md and applies without a restart', async () => {
+  const { config } = await import('../src/core/config.mjs')
+  // Never write the developer's real persona.
+  assert.ok(config.assistantProfilePath.startsWith(configDirectory), config.assistantProfilePath)
+  const result = updateRuntimeSettings({ persona: '  ## Identity\n\nYour name is Nova.  ' })
+  assert.deepEqual(result.changed, ['persona'])
+  assert.equal(readFileSync(config.assistantProfilePath, 'utf8'), '## Identity\n\nYour name is Nova.\n')
+  assert.equal(readRuntimeSettings().persona, '## Identity\n\nYour name is Nova.')
+  assert.equal(settingsNeedRestart(['persona']), false)
+  for (const persona of ['   ', 'x'.repeat(4001)]) {
+    assert.throws(() => updateRuntimeSettings({ persona }), error => error.status === 400)
+  }
+})
+
 test('a restart reads the live settings from config.env, not the inherited env', () => {
   const env = restartEnvironment({
     PATH: '/usr/bin',

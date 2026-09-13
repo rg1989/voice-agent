@@ -44,6 +44,17 @@ test('sends only the dynamic natural instruction when MCP supplies stable rules'
   assert.doesNotMatch(prompt, /Project Session routing:|Return exactly one JSON object/u)
 })
 
+test('gives the brain the same persona the voice speaks as', () => {
+  const prompt = buildAcpCoordinatorInstruction({
+    objective: '查询当前电脑的真实内存容量',
+    persona: '## Identity\n\nYour name is Nova.',
+    includeStableInstructions: false,
+  })
+
+  assert.match(prompt, /^查询当前电脑的真实内存容量/u)
+  assert.match(prompt, /<assistant_profile>\n## Identity\n\nYour name is Nova\.\n<\/assistant_profile>/u)
+})
+
 test('keeps frontend memory, history, and attachment metadata out of model text', () => {
   const prompt = buildAcpCoordinatorInstruction({
     originalRequest: '分析这张图片',

@@ -34,8 +34,9 @@ const CONFIG_KEYS = Object.freeze({
   ...LIVE_SETTINGS_ENV_KEYS,
 })
 
-// Keys an open voice connection applies itself, so saving them needs no restart.
-const LIVE_KEYS = new Set(['voice', ...LIVE_SETTING_KEYS])
+// Keys that need no restart: an open voice connection applies these itself, and
+// the persona file is re-read on every voice turn and every brain task.
+const LIVE_KEYS = new Set(['voice', 'persona', ...LIVE_SETTING_KEYS])
 
 export function settingsNeedRestart(changed = []) {
   return changed.some(key => !LIVE_KEYS.has(key))
@@ -124,6 +125,18 @@ function configPath() {
   return resolve(config.configDirectory, 'config.env')
 }
 
+// The one persona the voice and the brain both speak as. The file is the
+// setting: frontend-tools.mjs reads it per voice turn, backend-adapter.mjs per task.
+const PERSONA_MAX_CHARS = 4000 // the voice truncates ASSISTANT.md past this
+
+function readPersona() {
+  try {
+    return readFileSync(config.assistantProfilePath, 'utf8').trim()
+  } catch {
+    return ''
+  }
+}
+
 function readConfigLines() {
   const path = configPath()
   if (!existsSync(path)) return []
@@ -197,6 +210,7 @@ export function readRuntimeSettings() {
     followUpSeconds: live.followUpSeconds,
     followUpDefaults: FOLLOW_UP_DEFAULTS,
     cameraEnabled: live.cameraEnabled,
+    persona: readPersona(),
   }
 }
 
@@ -327,6 +341,23 @@ export function updateRuntimeSettings(patch = {}) {
       [CONFIG_KEYS.cameraEnabled]: patch.cameraEnabled ? 'true' : 'false',
     })
     changed.push('cameraEnabled')
+  }
+
+  if (typeof patch.persona === 'string') {
+    const persona = patch.persona.trim()
+    // An empty ASSISTANT.md stops the voice from building its instructions.
+    if (!persona) {
+      throw Object.assign(new Error('persona must not be empty'), { status: 400 })
+    }
+    if ([...persona].length > PERSONA_MAX_CHARS) {
+      throw Object.assign(
+        new Error(`persona must be at most ${PERSONA_MAX_CHARS} characters`),
+        { status: 400 },
+      )
+    }
+    writeFileSync(config.assistantProfilePath, `${persona}\n`, { encoding: 'utf8', mode: 0o600 })
+    chmodSync(config.assistantProfilePath, 0o600)
+    changed.push('persona')
   }
 
   if (!changed.length) return { changed }

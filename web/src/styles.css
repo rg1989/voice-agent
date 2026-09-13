@@ -1756,6 +1756,23 @@ article.user .message-body .inline-code { background: #5e44c9; color: #f0eaff; }
 
 .settings-group form button:disabled { opacity: 0.45; }
 
+.settings-group form.settings-persona { flex-direction: column; align-items: flex-end; }
+
+.settings-persona textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 160px;
+  padding: 8px 10px;
+  color: #f5f5f7;
+  border: 1px solid #ffffff1e;
+  border-radius: 10px;
+  background: #ffffff08;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .settings-option { transition: none; }
 }

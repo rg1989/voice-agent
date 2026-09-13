@@ -124,6 +124,7 @@ export default function SettingsPanel({ onClose, setOutputVoice }) {
   const [restarting, setRestarting] = useState(false)
   const [error, setError] = useState('')
   const [sampling, setSampling] = useState('')
+  const [personaEdit, setPersonaEdit] = useState(null)
 
   const refresh = useCallback(async () => {
     try {
@@ -162,6 +163,7 @@ export default function SettingsPanel({ onClose, setOutputVoice }) {
   }, [busy, restarting, refresh, setOutputVoice])
 
   const disabled = busy || restarting || !settings
+  const persona = personaEdit ?? settings?.persona ?? ''
 
   return <aside className="settings-panel" aria-label={t('设置')}>
     <header>
@@ -192,6 +194,33 @@ export default function SettingsPanel({ onClose, setOutputVoice }) {
               <small>{option.detail}</small>
             </button>)}
           </div>
+        </section>
+
+        <section className="settings-group">
+          <h4>{t('人设')}</h4>
+          <p className="settings-hint">{t('语音和大脑共用同一个人设：名字、性格、语言和说话风格。保存后下一次回答就生效，不会重启 Gateway。')}</p>
+          <form
+            className="settings-persona"
+            onSubmit={event => {
+              event.preventDefault()
+              save({ persona })
+            }}
+          >
+            <textarea
+              value={persona}
+              rows={10}
+              maxLength={4000}
+              disabled={disabled}
+              aria-label={t('人设')}
+              onChange={event => setPersonaEdit(event.target.value)}
+            />
+            <button
+              type="submit"
+              disabled={disabled || !persona.trim() || persona.trim() === settings.persona}
+            >
+              {t('保存人设')}
+            </button>
+          </form>
         </section>
 
         <ListeningSettings settings={settings} disabled={disabled} save={save} />
@@ -326,7 +355,7 @@ export default function SettingsPanel({ onClose, setOutputVoice }) {
         </section>
 
         <p className="settings-hint settings-footnote">
-          {t('除了音色和聆听方式，这里的改动都会重启 Gateway，正在进行的任务会中断。')}
+          {t('除了音色、聆听方式和人设，这里的改动都会重启 Gateway，正在进行的任务会中断。')}
         </p>
       </>}
   </aside>
