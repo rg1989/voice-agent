@@ -62,11 +62,10 @@ main() {
 
   if [ -n "$bundle" ]; then
     say "Restoring your setup from $bundle"
-    # Under `curl | bash` stdin is the script, so ask for the passphrase on the terminal.
-    if [ -t 0 ] || [ -n "${QWAUDIO_SETUP_PASSPHRASE:-}" ]; then
+    if [ -n "${QWAUDIO_SETUP_PASSPHRASE:-}" ]; then
       node "$DIR/bin/setup-bundle.mjs" import "$bundle"
     else
-      node "$DIR/bin/setup-bundle.mjs" import "$bundle" < /dev/tty
+      as_terminal node "$DIR/bin/setup-bundle.mjs" import "$bundle"
     fi
     [ -f "$CONFIG_DIR/config.env" ] || fail "the setup file was not restored"
   elif [ ! -f "$CONFIG_DIR/config.env" ]; then
@@ -99,6 +98,12 @@ main() {
   note "Using Claude Code as the brain? Its login is not in the setup file: run 'claude' once and log in."
 }
 
+# Run a command that may ask something. Under `curl | bash` stdin is the script
+# itself, so read answers from the terminal instead.
+as_terminal() {
+  if [ -t 0 ] || [ ! -r /dev/tty ]; then "$@"; else "$@" < /dev/tty; fi
+}
+
 check_macos() {
   local version major minor
   version="$(sw_vers -productVersion)"
@@ -123,11 +128,11 @@ check_linux() {
     if command -v sudo >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1; then
       say "Installing$missing (sudo asks for your password)"
       # shellcheck disable=SC2086
-      { sudo apt-get update -qq && sudo apt-get install -y -qq $missing; } < /dev/tty || fail "could not install$missing"
+      as_terminal sh -c "sudo apt-get update -qq && sudo apt-get install -y -qq$missing" || fail "could not install$missing"
     elif command -v sudo >/dev/null 2>&1 && command -v dnf >/dev/null 2>&1; then
       say "Installing$missing (sudo asks for your password)"
       # shellcheck disable=SC2086
-      sudo dnf install -y -q $missing < /dev/tty || fail "could not install$missing"
+      as_terminal sudo dnf install -y -q $missing || fail "could not install$missing"
     else
       fail "install these first:$missing"
     fi
