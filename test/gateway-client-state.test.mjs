@@ -21,6 +21,10 @@ test('creates one stable client-state vocabulary', () => {
       holder: null,
     },
     currentTurnId: '',
+    listeningState: 'always',
+    listeningWakeWord: '',
+    listeningFollowUpMs: 0,
+    listeningFollowUpKey: 0,
   })
   assert.equal(
     createGatewayClientState({ connectionState: 'hidden' }).connectionState,
