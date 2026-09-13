@@ -163,6 +163,7 @@ async function importBundle(input) {
   const manifest = JSON.parse(gunzipSync(unseal(readFileSync(input), await passphrase({ confirm: false }))))
   if (manifest.version !== 1) throw new Error(`unsupported setup file version ${manifest.version}`)
   const notes = []
+  let restored = 0
   for (const file of manifest.files) {
     if (!ROOTS[file.root] || file.path.split(/[\\/]/).includes('..')) {
       throw new Error(`refusing unexpected path in setup file: ${file.root}/${file.path}`)
@@ -179,9 +180,12 @@ async function importBundle(input) {
     if (target.endsWith('.db')) { moveAside(`${target}-wal`); moveAside(`${target}-shm`) }
     writeFileSync(target, data, { mode: 0o600 })
     console.log(`  restored ${target}`)
+    restored += 1
   }
   for (const note of notes) console.log(`  note: ${note}`)
-  console.log('Setup restored. Files that were replaced were kept next to them as *.before-import.')
+  console.log(restored
+    ? 'Setup restored. Files that were replaced were kept next to them as *.before-import.'
+    : 'This Mac already has this setup; nothing changed.')
 }
 
 const [command, file] = process.argv.slice(2)

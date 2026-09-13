@@ -35,7 +35,9 @@ main() {
   minor="$(printf '%s' "$macos" | cut -d. -f2)"
   macos_num=$((major * 100 + ${minor:-0}))
   say "macOS $macos on $arch"
-  [ "$macos_num" -ge 1100 ] || fail "macOS 11 or newer is required"
+  # Bun, which runs the Oh My Pi brain, needs macOS 13. Intel MacBook Pros from
+  # 2016 and earlier cannot go past macOS 12.
+  [ "$macos_num" -ge 1300 ] || fail "macOS 13 or newer is required (this Mac has $macos)"
 
   install_node "$arch" "$macos_num"
   install_bun_and_omp "$macos_num"
@@ -83,8 +85,10 @@ node_ok() {
 
 install_node() {
   local arch="$1" macos_num="$2"
+  # A Node this script installed earlier, in a shell that has not loaded ~/.zprofile.
+  if [ -x "$HOME/.local/node/bin/node" ]; then export PATH="$HOME/.local/node/bin:$PATH"; fi
   if node_ok; then say "Node $(node -v) is already installed"; return; fi
-  # Node 24 needs macOS 13.5+; Node 22 still runs on macOS 11.
+  # Node 24 needs macOS 13.5+; Node 22 covers macOS 13.0-13.4.
   local line=22
   [ "$macos_num" -ge 1305 ] && line=24
   local node_arch=x64
@@ -151,4 +155,6 @@ fetch_code() {
   fi
 }
 
-main "$@"
+# exit on the same line: bash reads a script as it runs it, and the update step
+# can replace this very file, so nothing after main may be read again.
+main "$@"; exit
