@@ -1,5 +1,6 @@
 import {
   buildFrontendContext,
+  buildLearnedWorkContext,
   loadFrontendPrompt,
   resolveAssistantProfile,
 } from '../conversation/frontend-agent-context.mjs'
@@ -181,6 +182,7 @@ export const inputRequestResponseInstructions = [
 ].join(' ')
 
 export function buildFrontendInstructions(agentContext = {}) {
+  const learnedWork = buildLearnedWorkContext(agentContext.learnedWork)
   return [
     loadFrontendPrompt(),
     ...(frontendToolRegistry.isEnabled(IGNORE_INPUT_TOOL_NAME, agentContext)
@@ -198,6 +200,7 @@ export function buildFrontendInstructions(agentContext = {}) {
     resolveAssistantProfile(agentContext),
     '</assistant_profile>',
     ...optionalFrontendFeatures.map(feature => feature.context?.(agentContext)).filter(Boolean),
+    ...(learnedWork ? [learnedWork] : []),
     buildFrontendContext(agentContext),
   ].join('\n\n')
 }

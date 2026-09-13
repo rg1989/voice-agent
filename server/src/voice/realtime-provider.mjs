@@ -410,12 +410,15 @@ export class RealtimeFrontend {
     ))
   }
 
-  ensureResponse(context = {}, { shouldCreate, response } = {}) {
+  ensureResponse(context = {}, { shouldCreate, response, userContext } = {}) {
     if (!this.capabilities.clientResponses) {
       return Promise.resolve({ skipped: true, unsupported: true })
     }
-    return this.enqueueResponse('agent', context, () => {
+    return this.enqueueResponse('agent', context, async () => {
       if (shouldCreate && !shouldCreate()) return false
+      if (userContext) {
+        await this.createConversationItem(this.protocol.userTextItem(userContext))
+      }
       this.send(this.protocol.responseCreate(response))
     })
   }

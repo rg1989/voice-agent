@@ -16,7 +16,10 @@ import { config as defaultConfig } from '../core/config.mjs'
 import { logger as defaultLogger } from '../core/logger.mjs'
 import { conversationSync as defaultConversationSync } from '../conversation/conversation-sync.mjs'
 import { InputAssetRegistry } from './input-asset-registry.mjs'
-import { normalizeClientContext } from '../conversation/frontend-agent-context.mjs'
+import {
+  learnedWorkObjectives,
+  normalizeClientContext,
+} from '../conversation/frontend-agent-context.mjs'
 import {
   defaultRealtimeProviderRegistry,
   realtimeEventErrorMessage,
@@ -453,6 +456,7 @@ export function attachRealtimeGateway(server, {
         tools: frontendSourceToolDefinitions(frontendToolSources),
       },
       memories: memoryService?.list(ownerId, { limit: 64 }) || [],
+      learnedWork: learnedWorkObjectives(taskManager.list({ ownerId })),
       recentMessages: frontendRecentMessages(),
       ...(sessionAssistantProfile
         ? { assistantProfile: sessionAssistantProfile }
@@ -1237,6 +1241,22 @@ export function attachRealtimeGateway(server, {
           claimPendingNotifications([task.id])
         }
         return
+      }
+      const learnedWork = event.type === TaskDomainEvent.COMPLETED
+        ? learnedWorkObjectives(taskManager.list({ ownerId }))
+        : null
+      if (
+        learnedWork
+        && JSON.stringify(learnedWork)
+          !== JSON.stringify(realtimeSession.frontend?.agentContext?.learnedWork || [])
+      ) {
+        // Work finished in this session is already in the model's conversation;
+        // like memory writes, refresh instructions only for other sessions so
+        // the prompt prefix cache survives. Reminders, imports and other kinds
+        // leave the list unchanged and must not resend the session.
+        realtimeSession.updateAgentContext({ learnedWork }, {
+          refreshSession: task.sessionId !== sessionId,
+        })
       }
       if (task.sessionId !== sessionId) return
       const publicEvent = projectGatewayTaskEvent(event)

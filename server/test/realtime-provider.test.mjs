@@ -78,6 +78,8 @@ test('keeps spawn_thinking as the stable asynchronous work protocol', () => {
   assert.match(instructions, /不支持结构化输入请求的旧后台.*既有工作的续办/s)
   assert.match(instructions, /不要预测、模拟或代替后台提出权限请求/)
   assert.match(instructions, /duplicate.*同一目标此前已提交/)
+  assert.match(instructions, /绝不能拒绝[\s\S]*都立即调用 `spawn_thinking`，调用前不要口头回应/)
+  assert.match(instructions, /只有后台实际返回的结果才能说明失败或无法完成/)
 })
 
 function createQwenFrontend(options = {}) {
@@ -1289,6 +1291,29 @@ test('can give the model contextual guidance after an accepted tool call', async
     completed: true,
     responseId: 'response-followup',
   })
+})
+
+test('can place a correction in the conversation before forcing a response', async () => {
+  const frontend = createQwenFrontend({
+    responseStartTimeoutMs: 50,
+    responseCompletionTimeoutMs: 50,
+  })
+  const sent = []
+  frontend.ready = true
+  frontend.send = payload => sent.push(payload)
+
+  frontend.ensureResponse(
+    { turnId: 'refusal-turn' },
+    { shouldCreate: () => true, userContext: '（系统提示：调用工具。）' },
+  )
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(sent.length, 1)
+  assert.equal(sent[0].type, 'conversation.item.create')
+  assert.match(JSON.stringify(sent[0].item), /（系统提示：调用工具。）/)
+
+  frontend.handleLifecycle({ type: 'conversation.item.created', item: { id: sent[0].item.id } })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(sent[1], { type: 'response.create' })
 })
 
 test('can force one model response with ephemeral instructions', async () => {

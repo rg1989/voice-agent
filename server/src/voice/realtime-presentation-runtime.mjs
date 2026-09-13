@@ -12,6 +12,7 @@ import {
   containsReservedProtocolEnvelope,
 } from './response-guards/reserved-protocol-envelope.mjs'
 import { realtimeResponseId } from './response-lifecycle.mjs'
+import { SPAWN_THINKING_TOOL_NAME } from '../frontend/tools/spawn-thinking-tool.mjs'
 
 const PRESENTATION_RESPONSE_EVENTS = new Set([
   'response.created',
@@ -102,6 +103,11 @@ export class RealtimePresentationRuntime {
     this.contexts = new Map()
     this.playbackTurns = new Map()
     this.lastCorrectionTurn = null
+    // Turns in which the model called any tool, or answered right after a task
+    // result. A reply relaying a tool or backend outcome ("why couldn't you?")
+    // is not a refusal; bounded because turns never end here.
+    this.functionCallTurns = new Set()
+    this.taskResultPresented = false
   }
 
   has(id) {
@@ -120,6 +126,7 @@ export class RealtimePresentationRuntime {
     const context = this.contexts.get(id)
     if (context) {
       context.hasFunctionCall = true
+      this.#rememberRelayTurn(context.turnId || this.turns.turnId)
       this.send({
         type: GatewayServerEvent.VOICE_STATE,
         state: 'processing',
@@ -128,6 +135,13 @@ export class RealtimePresentationRuntime {
       })
     }
     return context
+  }
+
+  #rememberRelayTurn(turnId) {
+    this.functionCallTurns.add(turnId)
+    if (this.functionCallTurns.size > 32) {
+      this.functionCallTurns.delete(this.functionCallTurns.values().next().value)
+    }
   }
 
   publicContext(context = {}) {
@@ -365,9 +379,17 @@ export class RealtimePresentationRuntime {
       type: GatewayServerEvent.ERROR,
       message: error.message,
     }))
+    if ((context?.origin || 'model') === 'model' && this.taskResultPresented) {
+      this.taskResultPresented = false
+      this.#rememberRelayTurn(responseTurnId)
+    }
+    if (context?.origin === 'announcement' && !failed) this.taskResultPresented = true
     const guardDecision = evaluateResponseGuards({
       origin: context?.origin || 'model',
       hasFunctionCall: Boolean(context?.hasFunctionCall),
+      turnHasFunctionCall: this.functionCallTurns.has(responseTurnId),
+      delegationAvailable: !this.getFrontend()?.agentContext?.frontend?.disabledTools
+        ?.includes(SPAWN_THINKING_TOOL_NAME),
       failed,
       suppressed: Boolean(context?.suppressed),
       transcript: context?.assistantTranscript || '',
@@ -450,7 +472,9 @@ export class RealtimePresentationRuntime {
     if (
       !this.getOutputEnabled()
       || !frontend?.ready
-      || !frontend.capabilities.perResponseInstructions
+      || !frontend.capabilities[
+        decision.asUserContext ? 'conversationItems' : 'perResponseInstructions'
+      ]
     ) return
     const generation = context?.turnGeneration
     const isCurrent = () => isResponseGuardTurnCurrent({
@@ -472,7 +496,9 @@ export class RealtimePresentationRuntime {
       turnGeneration: generation,
     }, {
       shouldCreate: isCurrent,
-      response: { instructions: decision.instructions },
+      ...(decision.asUserContext
+        ? { userContext: `（系统提示：${decision.instructions}）` }
+        : { response: { instructions: decision.instructions } }),
     }).catch(error => this.send({
       type: GatewayServerEvent.ERROR,
       message: error.message,

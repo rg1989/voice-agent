@@ -9,6 +9,7 @@ function harness({
   terminalToolResponses = [],
   resultSummaryResponses = [],
   perResponseInstructions = false,
+  conversationItems = false,
 } = {}) {
   const events = []
   const records = []
@@ -20,7 +21,7 @@ function harness({
   const frontend = {
     ready: true,
     provider: { outputSampleRate: 24000 },
-    capabilities: { perResponseInstructions },
+    capabilities: { perResponseInstructions, conversationItems },
     ensureResponse: async (...args) => calls.push(['ensureResponse', ...args]),
   }
   const terminalResponses = new Set(terminalToolResponses)
@@ -67,6 +68,7 @@ function harness({
   })
   return {
     runtime,
+    frontend,
     turns,
     events,
     records,
@@ -160,6 +162,76 @@ test('allows only one protocol correction per user turn, including repeated inva
   assert.equal(corrections()[0][2].shouldCreate(), false)
   invalidResponse('response-4')
   assert.equal(corrections().length, 2)
+})
+
+test('corrects a refusal only in a turn without any tool call', () => {
+  const setup = harness({ conversationItems: true })
+  const corrections = () => setup.calls.filter(([name]) => name === 'ensureResponse')
+  const refusal = id => {
+    deliver(setup.runtime, {
+      type: 'response.text.done', response_id: id,
+      text: "Sorry, I can't open that file.", __voiceContext: setup.turns.committed(),
+    })
+    deliver(setup.runtime, { type: 'response.done', response: { id, status: 'completed' } })
+  }
+  const first = setup.turns.beginVoice('input-1').context
+  setup.turns.endSpeech()
+  setup.turns.commit(first)
+  deliver(setup.runtime, {
+    type: 'response.created',
+    response: { id: 'response-tool' },
+    __voiceContext: setup.turns.committed(),
+  })
+  setup.runtime.markFunctionCall('response-tool')
+  deliver(setup.runtime, { type: 'response.done', response: { id: 'response-tool', status: 'completed' } })
+  refusal('response-relay')
+  assert.equal(corrections().length, 0)
+
+  const second = setup.turns.beginVoice('input-2').context
+  setup.turns.endSpeech()
+  setup.turns.commit(second)
+  refusal('response-refusal')
+  assert.equal(corrections().length, 1)
+  assert.equal(corrections()[0][2].response, undefined)
+  assert.match(corrections()[0][2].userContext, /^（系统提示：[\s\S]*spawn_thinking/)
+})
+
+test('does not correct a follow-up that relays a task result or when delegation is unavailable', () => {
+  const setup = harness({ conversationItems: true })
+  const corrections = () => setup.calls.filter(([name]) => name === 'ensureResponse')
+  const turn = inputId => {
+    const context = setup.turns.beginVoice(inputId).context
+    setup.turns.endSpeech()
+    setup.turns.commit(context)
+  }
+  const refusal = id => {
+    deliver(setup.runtime, {
+      type: 'response.text.done', response_id: id,
+      text: "I don't have access to your email account yet.", __voiceContext: setup.turns.committed(),
+    })
+    deliver(setup.runtime, { type: 'response.done', response: { id, status: 'completed' } })
+  }
+  turn('input-1')
+  deliver(setup.runtime, {
+    type: 'response.created',
+    response: { id: 'response-result' },
+    __voiceOrigin: 'announcement',
+    __voiceContext: { ...setup.turns.committed(), taskIds: ['task-1'] },
+  })
+  deliver(setup.runtime, { type: 'response.done', response: { id: 'response-result', status: 'completed' } })
+  turn('input-2')
+  refusal('response-relay')
+  assert.equal(corrections().length, 0)
+
+  setup.frontend.agentContext = { frontend: { disabledTools: ['spawn_thinking'] } }
+  turn('input-3')
+  refusal('response-unconfigured')
+  assert.equal(corrections().length, 0)
+
+  setup.frontend.agentContext = {}
+  turn('input-4')
+  refusal('response-refusal')
+  assert.equal(corrections().length, 1)
 })
 
 function deliver(runtime, event) {

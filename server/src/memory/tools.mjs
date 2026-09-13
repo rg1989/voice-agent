@@ -117,11 +117,15 @@ async function memory(runtime, callId, turnId, args, responseOptions) {
             context: '',
           }
       const memories = result.memories
+      const found = Boolean(memories.length || result.context)
       output = {
-        status: memories.length || result.context ? 'ok' : 'not_found',
+        status: found ? 'ok' : 'not_found',
         count: memories.length,
         documents: memories,
         ...(result.context ? { context: result.context } : {}),
+        // Missing from memory is not unknown: the backend can still look in
+        // files, mail and apps, so the model should try before giving up.
+        ...(found ? {} : { hint: '记忆里没有。若本轮提供 spawn_thinking，直接调用它让后台从文件、邮件和应用中查找，不要说不知道或只请用户告诉你。' }),
       }
     } catch {
       output = toolFailure(

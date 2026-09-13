@@ -1,12 +1,16 @@
 import {
   reservedProtocolEnvelopeGuard,
 } from './reserved-protocol-envelope.mjs'
+import {
+  refusalWithoutDelegationGuard,
+} from './refusal-without-delegation.mjs'
 
 // Registration is intentionally static. Adding a guard is a reviewed code change,
 // not runtime configuration, and the first matching guard is the only correction
 // allowed for one response.
 const RESPONSE_GUARDS = Object.freeze([
   reservedProtocolEnvelopeGuard,
+  refusalWithoutDelegationGuard,
 ])
 
 export function evaluateResponseGuards(
@@ -22,6 +26,7 @@ export function evaluateResponseGuards(
     return {
       guardId: guard.id,
       instructions,
+      ...(guard.asUserContext ? { asUserContext: true } : {}),
     }
   }
   return null
