@@ -27,10 +27,12 @@ test('settings expose the listening, wake word, follow-up and camera options', (
     { id: 'hey_lisa', label: 'Hey Lisa' },
     { id: 'hey_megan', label: 'Hey Megan' },
     { id: 'hey_mycroft', label: 'Hey Mycroft' },
+    { id: 'glados', label: 'GLaDOS' },
   ])
   assert.equal(settings.followUpSeconds, 5)
   assert.deepEqual(settings.followUpDefaults, { seconds: 5, min: 0, max: 10 })
   assert.equal(settings.cameraEnabled, false)
+  assert.equal(settings.roboticVoice, false)
 })
 
 test('saving the live settings persists them to config.env', () => {
@@ -69,6 +71,7 @@ test('invalid live settings are rejected', () => {
 test('only patches made entirely of live keys skip the restart', () => {
   assert.equal(settingsNeedRestart(['voice']), false)
   assert.equal(settingsNeedRestart(['listeningMode', 'wakeWord', 'followUpSeconds', 'cameraEnabled']), false)
+  assert.equal(settingsNeedRestart(['roboticVoice']), false)
   assert.equal(settingsNeedRestart(['listeningMode', 'brain']), true)
   assert.equal(settingsNeedRestart(['turnThreshold']), true)
 })
@@ -94,6 +97,7 @@ test('a restart reads the live settings from config.env, not the inherited env',
     QWEN_AUDIO_WAKE_WORD: 'hey_lisa',
     QWEN_AUDIO_FOLLOW_UP_SECONDS: '5',
     QWEN_AUDIO_CAMERA_ENABLED: 'false',
+    QWEN_AUDIO_ROBOTIC_VOICE: 'true',
   })
   assert.deepEqual(env, { PATH: '/usr/bin' })
 })

@@ -4,7 +4,7 @@ set -e
 CFG="$HOME/.config/qwaudio/config.env"
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 
-declare -a NAMES=(Jennifer Aiden Ryan Mione Tina Andre Cindy Lenn)
+declare -a NAMES=(Jennifer Aiden Ryan Mione Tina Andre Cindy Lenn Siiri)
 declare -a DESCS=(
   "Female · American English"
   "Male · American English"
@@ -14,6 +14,7 @@ declare -a DESCS=(
   "Male · neutral multilingual"
   "Female · Taiwanese-accented English"
   "Male · German-accented English"
+  "Female · calm, measured English"
 )
 
 current=$(grep '^QWEN_OMNI_REALTIME_VOICE=' "$CFG" 2>/dev/null | tail -1 | cut -d= -f2)

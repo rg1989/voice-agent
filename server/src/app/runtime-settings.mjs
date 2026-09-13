@@ -60,6 +60,7 @@ export const WAKE_WORD_OPTIONS = Object.freeze([
   { id: 'hey_lisa', label: 'Hey Lisa' },
   { id: 'hey_megan', label: 'Hey Megan' },
   { id: 'hey_mycroft', label: 'Hey Mycroft' },
+  { id: 'glados', label: 'GLaDOS' },
 ])
 
 export const FOLLOW_UP_DEFAULTS = Object.freeze({
@@ -100,6 +101,8 @@ export const OMNI_VOICES = Object.freeze([
   { id: 'Andre', label: 'Andre', detail: 'Male · neutral multilingual' },
   { id: 'Cindy', label: 'Cindy', detail: 'Female · Taiwanese-accented English' },
   { id: 'Lenn', label: 'Lenn', detail: 'Male · German-accented English' },
+  // Checked by recording a sample on qwen3.5-omni-flash-realtime.
+  { id: 'Siiri', label: 'Siiri', detail: 'Female · calm, measured English' },
 ])
 
 export const BRAINS = Object.freeze([
@@ -213,6 +216,7 @@ export function readRuntimeSettings() {
     followUpSeconds: live.followUpSeconds,
     followUpDefaults: FOLLOW_UP_DEFAULTS,
     cameraEnabled: live.cameraEnabled,
+    roboticVoice: live.roboticVoice,
     persona: readPersona(),
   }
 }
@@ -346,6 +350,13 @@ export function updateRuntimeSettings(patch = {}) {
     changed.push('cameraEnabled')
   }
 
+  if (typeof patch.roboticVoice === 'boolean') {
+    lines = applyValues(lines, {
+      [CONFIG_KEYS.roboticVoice]: patch.roboticVoice ? 'true' : 'false',
+    })
+    changed.push('roboticVoice')
+  }
+
   if (typeof patch.persona === 'string') {
     const persona = patch.persona.trim()
     // An empty ASSISTANT.md stops the voice from building its instructions.
@@ -387,6 +398,7 @@ const MANAGED_ENV_KEYS = Object.freeze([
   CONFIG_KEYS.wakeWord,
   CONFIG_KEYS.followUpSeconds,
   CONFIG_KEYS.cameraEnabled,
+  CONFIG_KEYS.roboticVoice,
   'ACP_COMMAND',
   'ACP_ARGS',
   'ACP_LABEL',

@@ -11,6 +11,7 @@ test('live settings default to always listening with the camera off', () => {
     wakeWord: 'hey_jarvis',
     followUpSeconds: 5,
     cameraEnabled: false,
+    roboticVoice: false,
   })
 })
 
@@ -20,11 +21,13 @@ test('live settings parse config.env values and fall back per invalid field', ()
     QWEN_AUDIO_WAKE_WORD: 'ok_google',
     QWEN_AUDIO_FOLLOW_UP_SECONDS: '90',
     QWEN_AUDIO_CAMERA_ENABLED: 'true',
+    QWEN_AUDIO_ROBOTIC_VOICE: 'on',
   }), {
     listeningMode: 'wake_word',
     wakeWord: 'hey_jarvis',
     followUpSeconds: 10,
     cameraEnabled: true,
+    roboticVoice: true,
   })
 })
 
@@ -39,6 +42,7 @@ test('the store seeds from config and emits change only when a value changes', (
     wakeWord: 'hey_jarvis',
     followUpSeconds: 8,
     cameraEnabled: false,
+    roboticVoice: false,
   })
   const events = []
   store.on('change', (next, previous, changed) => events.push({ next, previous, changed }))

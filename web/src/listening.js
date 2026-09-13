@@ -6,8 +6,12 @@ import { t } from './i18n.js'
 
 export const RECOMMENDED_WAKE_WORD = 'hey_jarvis'
 
+// Names with their own capitalisation, matching the gateway's option labels.
+const WAKE_WORD_LABELS = Object.freeze({ glados: 'GLaDOS' })
+
 // hey_jarvis -> Hey Jarvis, matching the gateway's option labels.
 export function wakeWordLabel(id = '') {
+  if (Object.hasOwn(WAKE_WORD_LABELS, id)) return WAKE_WORD_LABELS[id]
   return String(id || '')
     .split('_')
     .filter(Boolean)

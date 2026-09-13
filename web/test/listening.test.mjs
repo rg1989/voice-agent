@@ -14,6 +14,7 @@ test('wake word ids read like the gateway labels', () => {
   assert.equal(wakeWordLabel('hey_jarvis'), 'Hey Jarvis')
   assert.equal(wakeWordLabel('hey_lisa'), 'Hey Lisa')
   assert.equal(wakeWordLabel('hey_mycroft'), 'Hey Mycroft')
+  assert.equal(wakeWordLabel('glados'), 'GLaDOS')
   assert.equal(wakeWordLabel(''), '')
   assert.equal(RECOMMENDED_WAKE_WORD, 'hey_jarvis')
 })

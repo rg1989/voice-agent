@@ -364,6 +364,28 @@ test('a persona saved in Settings is resent to an open connection', async t => {
   await waitUntil(() => liveSettings.listenerCount('persona') === 0)
 })
 
+test('with the robotic voice on, reply audio reaches the client filtered', async t => {
+  const { server, frontends, liveSettings } = await startGateway(t, { listeningMode: 'always' })
+  const client = await connect(server)
+  const frontend = frontends[0]
+  const delta = responseId => client.received.find(event => (
+    event.type === 'audio.delta' && event.responseId === responseId
+  ))
+
+  frontend.emit({ type: 'response.created', response: { id: 'resp-plain' } })
+  frontend.emit({ type: 'response.output_audio.delta', response_id: 'resp-plain', delta: chunk(1) })
+  await waitUntil(() => delta('resp-plain'))
+  assert.equal(delta('resp-plain').audio, chunk(1))
+
+  liveSettings.update({ roboticVoice: true })
+  frontend.emit({ type: 'response.created', response: { id: 'resp-robotic' } })
+  frontend.emit({ type: 'response.output_audio.delta', response_id: 'resp-robotic', delta: chunk(1) })
+  await waitUntil(() => delta('resp-robotic'))
+  assert.notEqual(delta('resp-robotic').audio, chunk(1))
+  // Playback tracking counts samples, so the length must not change.
+  assert.equal(Buffer.from(delta('resp-robotic').audio, 'base64').length, 3200)
+})
+
 test('a wake whose request names the wake word is answered', async t => {
   const { server, frontends, detectors } = await startGateway(t)
   const client = await connect(server)

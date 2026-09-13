@@ -67,6 +67,11 @@ const expectations = {
   hey_lisa: { fires: ['hey-lisa-samantha'], quiet: ['hey-teresa-samantha', 'hey-megan-samantha', 'hey-jarvis-samantha'] },
   hey_megan: { fires: ['hey-megan-samantha'], quiet: ['hey-morgan-samantha', 'hey-lisa-samantha', 'hey-jarvis-samantha'] },
   hey_mycroft: { fires: ['hey-mycroft-samantha'], quiet: ['hey-jarvis-samantha'] },
+  // Works with or without "Hey"; "Gladys" wakes it too, so it is not a quiet case.
+  glados: {
+    fires: ['glados-samantha', 'hey-glados-daniel', 'okay-glados-karen'],
+    quiet: ['hey-jarvis-samantha', 'hey-lisa-samantha', 'turn-off-the-lights-daniel'],
+  },
 }
 
 test('real models fire on their wake word and stay quiet on near misses', { skip }, async () => {

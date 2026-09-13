@@ -13,6 +13,8 @@ const translations = {
   '调高一点，回声和环境音就不容易打断助手正在说的话。': 'Raise this so echo and room noise are less likely to interrupt.',
   '{count} 毫秒': '{count} ms',
   '隐私': 'Privacy',
+  '机械音效': 'Robotic voice',
+  '给助手的声音加上轻微的变调、金属回声和扫频，听起来像机器。改完立即生效，不会重启 Gateway。': 'Adds a slight pitch lift, a metallic echo and a slow sweep so the assistant sounds synthetic. Applies at once, without restarting the gateway.',
   '人设': 'Persona',
   '语音和大脑共用同一个人设：名字、性格、语言和说话风格。保存后下一次回答就生效，不会重启 Gateway。': 'One persona for both the voice and the brain: name, personality, language and speaking style. Saving applies it from the next reply, without restarting the gateway.',
   '保存人设': 'Save persona',

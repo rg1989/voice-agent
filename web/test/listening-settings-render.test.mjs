@@ -38,6 +38,7 @@ const settings = {
     { id: 'hey_lisa', label: 'Hey Lisa' },
     { id: 'hey_megan', label: 'Hey Megan' },
     { id: 'hey_mycroft', label: 'Hey Mycroft' },
+    { id: 'glados', label: 'GLaDOS' },
   ],
   followUpSeconds: 5,
   followUpDefaults: { seconds: 5, min: 0, max: 10 },
@@ -78,6 +79,7 @@ test('wake word mode adds wake words, the recommendation and a follow-up slider'
       'Hey Lisa',
       'Hey Megan',
       'Hey Mycroft',
+      'GLaDOS',
     ])
     assert.ok(html.includes(`<b>Hey Jarvis</b><small>${recommended}</small>`))
     assert.ok(html.includes('<b>Hey Lisa</b></button>'))

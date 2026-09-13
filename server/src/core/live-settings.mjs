@@ -5,7 +5,7 @@ import { EventEmitter } from 'node:events'
 // connections read and subscribe to.
 
 export const LISTENING_MODES = Object.freeze(['always', 'wake_word'])
-export const WAKE_WORDS = Object.freeze(['hey_jarvis', 'hey_lisa', 'hey_megan', 'hey_mycroft'])
+export const WAKE_WORDS = Object.freeze(['hey_jarvis', 'hey_lisa', 'hey_megan', 'hey_mycroft', 'glados'])
 export const FOLLOW_UP_SECONDS_RANGE = Object.freeze({ min: 0, max: 10 })
 
 export const LIVE_SETTINGS_DEFAULTS = Object.freeze({
@@ -13,6 +13,7 @@ export const LIVE_SETTINGS_DEFAULTS = Object.freeze({
   wakeWord: 'hey_jarvis',
   followUpSeconds: 5,
   cameraEnabled: false,
+  roboticVoice: false,
 })
 
 export const LIVE_SETTING_KEYS = Object.freeze(Object.keys(LIVE_SETTINGS_DEFAULTS))
@@ -22,6 +23,7 @@ export const LIVE_SETTINGS_ENV_KEYS = Object.freeze({
   wakeWord: 'QWEN_AUDIO_WAKE_WORD',
   followUpSeconds: 'QWEN_AUDIO_FOLLOW_UP_SECONDS',
   cameraEnabled: 'QWEN_AUDIO_CAMERA_ENABLED',
+  roboticVoice: 'QWEN_AUDIO_ROBOTIC_VOICE',
 })
 
 function followUpSeconds(value) {
@@ -43,6 +45,9 @@ export function normalizeLiveSettings(values = {}, fallback = LIVE_SETTINGS_DEFA
     cameraEnabled: typeof values.cameraEnabled === 'boolean'
       ? values.cameraEnabled
       : fallback.cameraEnabled,
+    roboticVoice: typeof values.roboticVoice === 'boolean'
+      ? values.roboticVoice
+      : fallback.roboticVoice,
   }
 }
 
@@ -53,6 +58,7 @@ export function liveSettingsFromEnvironment(env = process.env) {
     wakeWord: text('wakeWord'),
     followUpSeconds: env[LIVE_SETTINGS_ENV_KEYS.followUpSeconds],
     cameraEnabled: ['1', 'true', 'yes', 'on'].includes(text('cameraEnabled')),
+    roboticVoice: ['1', 'true', 'yes', 'on'].includes(text('roboticVoice')),
   })
 }
 

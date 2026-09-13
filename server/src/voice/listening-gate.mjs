@@ -36,6 +36,7 @@ const STOP_PHRASES = new Set([
 
 const WAKE_WORD_PREFIXES = [
   'hey jarvis', 'jarvis', 'hey lisa', 'lisa', 'hey megan', 'megan', 'hey mycroft', 'mycroft',
+  'hey glados', 'glados', 'hey gladys', 'gladys',
 ]
 // Words that may sit around a bare wake word ("Hey Jarvis", "嘿，贾维斯").
 const WAKE_WORD_FILLERS = new Set(['hey', 'hi', 'hello', 'ok', 'okay', 'oh', 'yo', '嘿', '你好', '哈喽'])
@@ -48,6 +49,8 @@ const WAKE_WORD_SPELLINGS = Object.freeze({
   hey_lisa: ['lisa', 'leesa', 'liza', '丽莎', '莉莎'],
   hey_megan: ['megan', 'meghan', 'meagan', '梅根'],
   hey_mycroft: ['mycroft', 'my croft'],
+  // The voice model writes "GLaDOS" as "Gladys" some of the time, so both count.
+  glados: ['glados', 'gladys', 'glad os', 'gladdos', 'gladus', '格拉多斯'],
 })
 
 // Case- and punctuation-insensitive. Latin spellings must be whole words;

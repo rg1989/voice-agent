@@ -49,6 +49,13 @@ export const WAKE_WORD_MODELS = Object.freeze({
     file: 'hey_mycroft_v0.1.onnx',
     sha256: 'c2a311e8fa1338de89c31b3b46dc4dffd4af2f9a8d6ddead48893c2d301b1f18',
   },
+  // Trained on both "GLaDOS" and "Hey GLaDOS". Also wakes on "Gladys", which
+  // the transcript check cannot tell apart either.
+  glados: {
+    file: 'glados_8bcd2f20.onnx',
+    url: `${COMMUNITY_URL}/glados/glados.onnx`,
+    sha256: '0874c4a420e2c20530be1c78d69a0b80a706ca385ee75c0833d88dca707c14c2',
+  },
 })
 
 export const WAKE_WORDS = Object.freeze(Object.keys(WAKE_WORD_MODELS))

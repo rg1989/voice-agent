@@ -361,10 +361,18 @@ test('recognises the wake word only in its common transcript spellings', () => {
     ['hey_megan', '梅根，现在几点？'],
     ['hey_mycroft', 'Hey Mycroft.'],
     ['hey_mycroft', 'hey my croft'],
+    ['glados', 'Hey, GLaDOS. What time is it?'],
+    ['glados', 'Okay, GLaDOS.'],
+    ['glados', 'Hey Gladys.'],
+    ['glados', 'glad os, play some music'],
+    ['glados', '格拉多斯，现在几点？'],
   ]) {
     assert.equal(mentionsWakeWord(wakeWord, transcript), true, transcript)
   }
   for (const [wakeWord, transcript] of [
+    ['glados', 'I am glad of it'],
+    ['glados', 'gladiolus'],
+    ['glados', 'Hey Jarvis'],
     ['hey_jarvis', 'hey travis what time is it'],
     ['hey_jarvis', 'Hey Jarvi'],
     ['hey_jarvis', 'jarvisbot'],
@@ -387,6 +395,8 @@ test('a transcript that is only the wake word asks for nothing', () => {
     ['hey_jarvis', '嘿，贾维斯'],
     ['hey_megan', 'Megan'],
     ['hey_mycroft', 'Hey my croft'],
+    ['glados', 'Okay, GLaDOS.'],
+    ['glados', 'Gladys?'],
   ]) {
     assert.equal(isWakeWordOnly(wakeWord, transcript), true, transcript)
   }

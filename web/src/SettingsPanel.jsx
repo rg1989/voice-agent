@@ -297,6 +297,18 @@ export default function SettingsPanel({ onClose, setOutputVoice }) {
               >▶</button>}
             </div>)}
           </div>
+          <label className="settings-toggle">
+            <input
+              type="checkbox"
+              checked={Boolean(settings.roboticVoice)}
+              disabled={disabled}
+              onChange={event => save({ roboticVoice: event.target.checked })}
+            />
+            <span>
+              <b>{t('机械音效')}</b>
+              <small>{t('给助手的声音加上轻微的变调、金属回声和扫频，听起来像机器。改完立即生效，不会重启 Gateway。')}</small>
+            </span>
+          </label>
         </section>
 
         <section className="settings-group">

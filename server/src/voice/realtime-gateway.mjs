@@ -56,6 +56,7 @@ import {
   ListeningState,
 } from './listening-gate.mjs'
 import { LiveSettings } from '../core/live-settings.mjs'
+import { createRoboticVoice } from './robotic-voice.mjs'
 import {
   isResponseActivityEvent,
   realtimeResponseId,
@@ -1084,7 +1085,15 @@ export function attachRealtimeGateway(server, {
         }
         if (silenceReason(event.turnId)) return
       }
-      send(ws, event)
+      send(ws, roboticAudio(event))
+    }
+    // Applied at the final send: held wake-word audio passes through
+    // presentationSend twice. One filter per connection keeps its state across chunks.
+    let roboticVoice = null
+    const roboticAudio = event => {
+      if (event.type !== GatewayServerEvent.AUDIO_DELTA || !liveSettings.get().roboticVoice) return event
+      roboticVoice ??= createRoboticVoice({ sampleRate: Number(event.sampleRate) || 24000 })
+      return { ...event, audio: roboticVoice.processBase64(event.audio) }
     }
     const inputsSend = event => {
       // A refused turn shows no further activity.
@@ -1698,6 +1707,7 @@ export function attachRealtimeGateway(server, {
       if (!wanted) return
       if (voiceSampleSession) return
       const responseId = `voice_sample_${randomUUID()}`
+      let sampleRobotic = null
       let settled = false
       const finish = () => {
         if (settled) return
@@ -1718,10 +1728,13 @@ export function attachRealtimeGateway(server, {
         logger: connectionLogger,
         onEvent: event => {
           if (event.type === 'response.output_audio.delta' || event.type === 'response.audio.delta') {
+            const sampleRate = voiceSampleSession?.provider?.()?.outputSampleRate || 24000
+            // A preview sounds the way replies will.
+            sampleRobotic ??= liveSettings.get().roboticVoice ? createRoboticVoice({ sampleRate }) : null
             send(ws, {
               type: GatewayServerEvent.AUDIO_DELTA,
-              audio: event.delta,
-              sampleRate: voiceSampleSession?.provider?.()?.outputSampleRate || 24000,
+              audio: sampleRobotic ? sampleRobotic.processBase64(event.delta) : event.delta,
+              sampleRate,
               responseId,
             })
             return
