@@ -101,7 +101,8 @@ main() {
 # Run a command that may ask something. Under `curl | bash` stdin is the script
 # itself, so read answers from the terminal instead.
 as_terminal() {
-  if [ -t 0 ] || [ ! -r /dev/tty ]; then "$@"; else "$@" < /dev/tty; fi
+  # /dev/tty can exist yet fail to open when there is no controlling terminal.
+  if [ -t 0 ] || ! { : < /dev/tty; } 2>/dev/null; then "$@"; else "$@" < /dev/tty; fi
 }
 
 check_macos() {
