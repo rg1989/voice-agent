@@ -585,6 +585,16 @@ export const config = {
   // to the Realtime provider so it can present the result. Turning this on
   // forwards only a VOICE: line the backend authored, which keeps file
   // contents, paths and secrets quoted in a summary off the wire.
+  // 断句灵敏度与停顿时长。两个都留空时用模型自己的默认值（见
+  // shared/realtime-model-catalog.mjs），所以不配置就是出厂行为。
+  // threshold 越高越不容易被环境音和回声触发；silence_duration_ms 越大，
+  // 说话中间停顿越不容易被当成说完了。
+  turnDetectionThreshold: process.env.QWEN_AUDIO_TURN_THRESHOLD
+    ? numberSetting(process.env.QWEN_AUDIO_TURN_THRESHOLD, 0.5, { min: 0, max: 1 })
+    : null,
+  turnDetectionSilenceMs: process.env.QWEN_AUDIO_TURN_SILENCE_MS
+    ? numberSetting(process.env.QWEN_AUDIO_TURN_SILENCE_MS, 800, { min: 200, max: 5000 })
+    : null,
   voiceSummaryOnly: String(
     process.env.QWEN_AUDIO_VOICE_SUMMARY_ONLY || 'false'
   ).toLowerCase() === 'true',

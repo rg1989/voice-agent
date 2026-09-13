@@ -46,6 +46,22 @@ function responseModalities(profile) {
   ].filter(Boolean)
 }
 
+// 用户在设置里调过的断句参数覆盖模型默认值。没调过就原样用默认值 ——
+// 只有配置过的字段才加进去，免得给不认识这两个字段的模型族发多余的参数。
+export function tunedTurnDetection(defaults, overrides = config) {
+  if (!defaults) return defaults
+  const tuned = { ...defaults }
+  if (overrides.turnDetectionThreshold !== null
+    && overrides.turnDetectionThreshold !== undefined) {
+    tuned.threshold = overrides.turnDetectionThreshold
+  }
+  if (overrides.turnDetectionSilenceMs !== null
+    && overrides.turnDetectionSilenceMs !== undefined) {
+    tuned.silence_duration_ms = overrides.turnDetectionSilenceMs
+  }
+  return tuned
+}
+
 export const dashscopeProvider = {
   key: 'dashscope',
   label: 'DashScope Realtime',
@@ -96,7 +112,7 @@ export const dashscopeProvider = {
         session.input_audio_format = 'pcm'
       }
       session.turn_detection = profile.transportCapabilities.audioInput
-        ? profile.sessionDefaults.turnDetection
+        ? tunedTurnDetection(profile.sessionDefaults.turnDetection)
         : null
     }
     return session

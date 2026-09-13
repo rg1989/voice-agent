@@ -19,6 +19,8 @@ const CONFIG_KEYS = Object.freeze({
   voice: 'QWEN_OMNI_REALTIME_VOICE',
   audioVoice: 'QWEN_AUDIO_REALTIME_VOICE',
   summaryOnly: 'QWEN_AUDIO_VOICE_SUMMARY_ONLY',
+  turnThreshold: 'QWEN_AUDIO_TURN_THRESHOLD',
+  turnSilenceMs: 'QWEN_AUDIO_TURN_SILENCE_MS',
 })
 
 // Voices confirmed against Alibaba's Qwen-Omni-Realtime voice list.
@@ -39,6 +41,16 @@ export const BRAINS = Object.freeze([
   { id: 'omp', label: 'Oh My Pi', detail: 'Uses the provider and model set in ~/.omp' },
   { id: 'none', label: 'No agent', detail: 'Voice conversation only' },
 ])
+
+export const TURN_DETECTION_DEFAULTS = Object.freeze({ threshold: 0.5, silenceMs: 800 })
+
+function clampNumber(value, { min, max }) {
+  // Number('') 是 0，会把「没配置」读成「调到最小」。
+  if (value === null || value === undefined || String(value).trim() === '') return null
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return null
+  return Math.min(max, Math.max(min, parsed))
+}
 
 function configPath() {
   // via core config, not shared/runtime-paths directly: app/ sits above core/
@@ -99,6 +111,11 @@ export function readRuntimeSettings() {
     voice: valueOf(lines, CONFIG_KEYS.voice) || valueOf(lines, CONFIG_KEYS.audioVoice),
     voices: OMNI_VOICES,
     summaryOnly: valueOf(lines, CONFIG_KEYS.summaryOnly).toLowerCase() === 'true',
+    turnThreshold: clampNumber(valueOf(lines, CONFIG_KEYS.turnThreshold), { min: 0, max: 1 })
+      ?? TURN_DETECTION_DEFAULTS.threshold,
+    turnSilenceMs: clampNumber(valueOf(lines, CONFIG_KEYS.turnSilenceMs), { min: 200, max: 5000 })
+      ?? TURN_DETECTION_DEFAULTS.silenceMs,
+    turnDefaults: TURN_DETECTION_DEFAULTS,
   }
 }
 
@@ -155,6 +172,24 @@ export function updateRuntimeSettings(patch = {}) {
     changed.push('voice')
   }
 
+  if (patch.turnThreshold !== undefined) {
+    const threshold = clampNumber(patch.turnThreshold, { min: 0, max: 1 })
+    if (threshold === null) {
+      throw Object.assign(new Error('turnThreshold must be a number'), { status: 400 })
+    }
+    lines = applyValues(lines, { [CONFIG_KEYS.turnThreshold]: String(threshold) })
+    changed.push('turnThreshold')
+  }
+
+  if (patch.turnSilenceMs !== undefined) {
+    const silence = clampNumber(patch.turnSilenceMs, { min: 200, max: 5000 })
+    if (silence === null) {
+      throw Object.assign(new Error('turnSilenceMs must be a number'), { status: 400 })
+    }
+    lines = applyValues(lines, { [CONFIG_KEYS.turnSilenceMs]: String(Math.round(silence)) })
+    changed.push('turnSilenceMs')
+  }
+
   if (typeof patch.summaryOnly === 'boolean') {
     lines = applyValues(lines, {
       [CONFIG_KEYS.summaryOnly]: patch.summaryOnly ? 'true' : null,
@@ -178,6 +213,8 @@ const MANAGED_ENV_KEYS = Object.freeze([
   CONFIG_KEYS.voice,
   CONFIG_KEYS.audioVoice,
   CONFIG_KEYS.summaryOnly,
+  CONFIG_KEYS.turnThreshold,
+  CONFIG_KEYS.turnSilenceMs,
   'ACP_COMMAND',
   'ACP_ARGS',
   'ACP_LABEL',

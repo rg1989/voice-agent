@@ -15,6 +15,39 @@ import {
 // 目录用服务端列目录 + 点击进入的方式选：浏览器的 <input type="file"> 拿不到
 // 真实路径，那是安全限制。Gateway 本来就跑在本机，列目录比让人手抄路径好得多。
 
+
+// 拖动过程中只改显示，松手（或键盘松键）才真正保存：每次保存都会重启 Gateway，
+// 按住不放一路重启是不能接受的。
+function TurnSlider({ label, hint, value, min, max, step, disabled, format, onCommit }) {
+  const [dragging, setDragging] = useState(null)
+  const shown = dragging === null ? value : dragging
+  const commit = () => {
+    if (dragging === null) return
+    const next = dragging
+    setDragging(null)
+    if (next !== value) onCommit(next)
+  }
+  return <label className="settings-slider">
+    <span className="settings-slider-head">
+      <b>{label}</b>
+      <small>{format(shown)}</small>
+    </span>
+    <input
+      type="range"
+      min={min}
+      max={max}
+      step={step}
+      value={shown}
+      disabled={disabled}
+      onChange={event => setDragging(Number(event.target.value))}
+      onPointerUp={commit}
+      onKeyUp={commit}
+      onBlur={commit}
+    />
+    <small className="settings-hint">{hint}</small>
+  </label>
+}
+
 export default function SettingsPanel({ onClose, setOutputVoice }) {
   const [settings, setSettings] = useState(null)
   const [browsing, setBrowsing] = useState(false)
@@ -147,6 +180,33 @@ export default function SettingsPanel({ onClose, setOutputVoice }) {
               >▶</button>}
             </div>)}
           </div>
+        </section>
+
+        <section className="settings-group">
+          <h4>{t('断句')}</h4>
+          <p className="settings-hint">{t('助手什么时候认为你说完了。改完会重启 Gateway。')}</p>
+          <TurnSlider
+            label={t('停顿多久算说完')}
+            hint={t('调大一点，中途思考的停顿就不会被当成说完了。')}
+            value={settings.turnSilenceMs}
+            min={200}
+            max={3000}
+            step={100}
+            disabled={disabled}
+            format={value => t('{count} 毫秒', { count: value })}
+            onCommit={value => save({ turnSilenceMs: value })}
+          />
+          <TurnSlider
+            label={t('拾音灵敏度')}
+            hint={t('调高一点，回声和环境音就不容易打断助手正在说的话。')}
+            value={settings.turnThreshold}
+            min={0}
+            max={1}
+            step={0.05}
+            disabled={disabled}
+            format={value => value.toFixed(2)}
+            onCommit={value => save({ turnThreshold: value })}
+          />
         </section>
 
         <section className="settings-group">
