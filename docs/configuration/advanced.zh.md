@@ -147,7 +147,7 @@ QWEN_AUDIO_AGENT_OPENCODE_ISOLATE_USER_CONFIG=true
 | `QWEN_AUDIO_WEB_SEARCH_MCP_TOKEN` | 显式选择 `bailian` 时复用 `DASHSCOPE_API_KEY`；自定义地址默认空 |
 | `QWEN_AUDIO_WEB_SEARCH_MCP_TOOL` | `bailian` 为 `bailian_web_search`，其他地址为 `web_search` |
 | `QWEN_AUDIO_SCHEDULE_TOOL_ENABLED` | `true`；设为 `false` 时隐藏 `schedule_reminder` |
-| `QWEN_AUDIO_WEB_TOOLS_ENABLED` | `true`；设为 `false` 时不向前台 Agent 提供 `web_search` 和 `fetch_url` |
+| `QWEN_AUDIO_WEB_TOOLS_ENABLED` | `false`；设为 `true` 时才向前台 Agent 提供 `web_search` 和 `fetch_url`。默认不给：前台一旦有直接对应的专用工具就不会交给后台，而它只拿得到一页搜索结果，后台才会真的读来源并交叉验证。 |
 | `QWEN_AUDIO_KNOWLEDGE_TOOL_ENABLED` | `true`；设为 `false` 时隐藏 `knowledge` |
 | `QWEN_AUDIO_NOTES_TOOL_ENABLED` | `true`；设为 `false` 时隐藏 `notes` |
 | `QWEN_AUDIO_RECALL_TOOL_ENABLED` | `true`；设为 `false` 时隐藏 `recall` |

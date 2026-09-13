@@ -28,7 +28,13 @@ test('preserves explicit zero numeric settings', () => {
 })
 
 test('keeps optional frontend tools enabled unless explicitly disabled', () => {
-  assert.deepEqual(resolveDisabledFrontendTools({}), [])
+  // 联网工具是唯一一个反过来的：默认不给前台，必须显式打开。给了它，前台就会
+  // 自己去搜，而不是交给真正会交叉验证的后台 Agent。
+  assert.deepEqual(resolveDisabledFrontendTools({}), ['web_search', 'fetch_url'])
+  assert.deepEqual(
+    resolveDisabledFrontendTools({ QWEN_AUDIO_WEB_TOOLS_ENABLED: 'true' }),
+    [],
+  )
   assert.deepEqual(resolveDisabledFrontendTools({
     QWEN_AUDIO_SCHEDULE_TOOL_ENABLED: 'false',
     QWEN_AUDIO_WEB_TOOLS_ENABLED: 'false',

@@ -47,11 +47,21 @@ function featureEnabled(value) {
   )
 }
 
+// 默认关闭、必须显式打开的开关。
+function featureOptIn(value) {
+  return ['1', 'true', 'yes', 'on'].includes(
+    String(value || '').trim().toLowerCase(),
+  )
+}
+
 export function resolveDisabledFrontendTools(env = process.env) {
   return [
     ...(!featureEnabled(env.QWEN_AUDIO_SCHEDULE_TOOL_ENABLED)
       ? ['schedule_reminder'] : []),
-    ...(!featureEnabled(env.QWEN_AUDIO_WEB_TOOLS_ENABLED)
+    // 前台自带的联网工具默认不给。它一旦存在，前台就会优先用这个「和意图直接
+    // 对应的专用工具」，而不是交给后台 Agent —— 后台会真的去查、去交叉验证，
+    // 前台只会拿到一份搜索结果然后凭训练数据补齐。默认关掉，需要时显式打开。
+    ...(!featureOptIn(env.QWEN_AUDIO_WEB_TOOLS_ENABLED)
       ? ['web_search', 'fetch_url'] : []),
     ...(!featureEnabled(env.QWEN_AUDIO_KNOWLEDGE_TOOL_ENABLED)
       ? ['knowledge'] : []),

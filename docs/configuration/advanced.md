@@ -168,7 +168,7 @@ them to the configuration file:
 | `QWEN_AUDIO_WEB_SEARCH_MCP_TOKEN` | `DASHSCOPE_API_KEY` for explicit `bailian`; empty for custom endpoints unless set |
 | `QWEN_AUDIO_WEB_SEARCH_MCP_TOOL` | `bailian_web_search` for `bailian`; otherwise `web_search` |
 | `QWEN_AUDIO_SCHEDULE_TOOL_ENABLED` | `true`; set to `false` to hide `schedule_reminder` |
-| `QWEN_AUDIO_WEB_TOOLS_ENABLED` | `true`; set to `false` to hide `web_search` and `fetch_url` from the frontend Agent |
+| `QWEN_AUDIO_WEB_TOOLS_ENABLED` | `false`; set to `true` to give the frontend Agent its own `web_search` and `fetch_url`. Off by default so the backend Agent does the looking up: the frontend prefers a directly matching tool over delegating, and it only gets a page of results to paraphrase, where the backend actually reads and cross-checks sources. |
 | `QWEN_AUDIO_KNOWLEDGE_TOOL_ENABLED` | `true`; set to `false` to hide `knowledge` |
 | `QWEN_AUDIO_NOTES_TOOL_ENABLED` | `true`; set to `false` to hide `notes` |
 | `QWEN_AUDIO_RECALL_TOOL_ENABLED` | `true`; set to `false` to hide `recall` |
