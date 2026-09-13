@@ -45,3 +45,6 @@ docs/.vitepress/cache/
 docs/.vitepress/.site/
 
 benchtmp/
+
+# Local gateway runtime state (pid file, logs) written by bin/restart.
+.run/
