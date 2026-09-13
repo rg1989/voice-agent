@@ -13,6 +13,14 @@ function clean(value) {
   return String(value || '').replace(/\s+/g, ' ').trim()
 }
 
+// 浏览器客户端没有文件系统概念，发不出工作目录，于是 <runtime_context> 里没有
+// client_working_directory —— PROMPT.md 明确要求这一字段缺失时不要猜测，所以前台
+// 会回答「我看不到当前目录」，哪怕 header 上正显示着它。后台 Agent 实际就在这个
+// 目录里干活，客户端没给时由服务端补上。
+function backendWorkspace() {
+  return config.backends?.[config.agentProtocol]?.directory || ''
+}
+
 export function normalizeClientContext({
   timeZone,
   locale,
@@ -30,7 +38,7 @@ export function normalizeClientContext({
   } catch {
     safeLocale = 'zh-CN'
   }
-  const safeWorkingDirectory = String(workingDirectory || '')
+  const safeWorkingDirectory = String(workingDirectory || backendWorkspace())
     .replaceAll('\0', '')
     .replace(/[\r\n]+/g, ' ')
     .trim()
