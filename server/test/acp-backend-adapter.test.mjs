@@ -1175,6 +1175,50 @@ test('replaces a persisted coordinator without the current coordinator contract'
   await adapter.close()
 })
 
+test('starts a fresh coordinator when the working folder changed', async () => {
+  const tools = fakeToolServer()
+  let resumes = 0
+  const cwds = []
+  const client = {
+    async newSession(options) {
+      cwds.push(options.cwd)
+      return { sessionId: 'fresh-coordinator', cwd: options.cwd, response: {} }
+    },
+    async resumeSession() {
+      resumes += 1
+      return { sessionId: 'stale-coordinator', cwd: '/previous-project', response: {} }
+    },
+    async prompt() {
+      return { content: completed('done'), response: { stopReason: 'end_turn' } }
+    },
+    async close() {},
+  }
+  const adapter = new AcpBackendAdapter({
+    protocol: 'qwen',
+    directory: '/current-project',
+    client,
+    sessionToolServer: tools,
+  })
+  adapter.registry.get = () => ({
+    sessionId: 'stale-coordinator',
+    cwd: '/previous-project',
+    contractVersion: 6,
+  })
+  adapter.registry.delete = () => {}
+  adapter.registry.set = () => {}
+
+  await adapter.coordinatorTurn('turn', {
+    ownerId: 'owner-one',
+    coordinationRunId: 'work-one',
+  })
+
+  // 恢复旧 Session 会把它恢复到 /previous-project，于是 header 显示新项目、
+  // 后台还在旧项目里干活。
+  assert.equal(resumes, 0)
+  assert.deepEqual(cwds, ['/current-project'])
+  await adapter.close()
+})
+
 test('isolates coordinator MCP registrations by owner and releases them', async () => {
   const tools = fakeToolServer()
   let projectId = 0

@@ -437,7 +437,11 @@ export class AcpBackendAdapter {
       let session
       const canResumeStored = Boolean(
         stored?.sessionId
-        && stored.contractVersion === contractVersion,
+        && stored.contractVersion === contractVersion
+        // 换了工作目录就不要接着上一场。resumeSession 会把 Session 恢复到它
+        // 原来的 cwd，于是 header 显示着新项目、后台还在旧项目里干活 —— 那正是
+        // 最不该出错的地方。换项目本来也该是另起一场对话。
+        && (!stored.cwd || stored.cwd === this.directory),
       )
       if (stored?.sessionId && !canResumeStored) {
         this.registry.delete(key)
