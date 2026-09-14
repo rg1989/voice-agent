@@ -27,6 +27,10 @@ node cli/bin/qwenaudio.mjs config   # creates config.env; fill in DASHSCOPE_API_
 bin/restart                         # starts the Gateway at http://127.0.0.1:3101
 ```
 
+After that, `make restart` installs packages if the lock file changed, rebuilds the WebUI if
+its sources changed, restarts the Gateway and prints the link. `make start` does the same but
+leaves a running Gateway alone, and `make build` only builds.
+
 Run the Gateway from the clone. The Settings panel restarts it with
 `bin/restart`, which a global install (`npm run install:global`) does not
 include. To set up a computer from an exported setup file, use `bin/setup` as
