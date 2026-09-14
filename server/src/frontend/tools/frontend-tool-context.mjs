@@ -36,10 +36,8 @@ export function buildFrontendToolContext({
       ...(sessionDigests ? [FRONTEND_RECALL_CAPABILITY] : []),
       ...(permissionPending ? [PERMISSION_RESPONSE_CAPABILITY] : []),
       ...(inputPending ? [BACKEND_INPUT_RESPONSE_CAPABILITY] : []),
-      ...(liveSettings?.listeningMode === 'wake_word' ? [WAKE_WORD_LISTENING_CAPABILITY] : []),
+      ...(liveSettings?.wakeWord ? [WAKE_WORD_LISTENING_CAPABILITY] : []),
     ])],
-    ...(liveSettings?.listeningMode === 'wake_word' && liveSettings.wakeWord
-      ? { wakeWord: liveSettings.wakeWord }
-      : {}),
+    ...(liveSettings?.wakeWord ? { wakeWord: liveSettings.wakeWord } : {}),
   }
 }

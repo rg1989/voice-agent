@@ -322,9 +322,10 @@ test('listening mode changes apply to an open connection', async t => {
   const frontend = frontends[0]
   assert.equal(client.listening().state, 'always')
   const toolNames = context => frontendTools(context).map(tool => tool.function.name)
-  assert.equal(toolNames(frontend.agentContexts.at(-1)).includes('stop_listening'), false)
+  // The WebUI can stop listening until the wake word in always mode too.
+  assert.equal(toolNames(frontend.agentContexts.at(-1)).includes('stop_listening'), true)
   assert.equal(toolNames(frontend.agentContexts.at(-1)).includes('ignore_input'), true)
-  assert.doesNotMatch(buildFrontendInstructions(frontend.agentContexts.at(-1)), /Hey Jarvis/)
+  assert.match(buildFrontendInstructions(frontend.agentContexts.at(-1)), /“Hey Jarvis”/)
 
   client.send({ type: 'audio.append', audio: chunk(1) })
   await waitUntil(() => frontend.appended.length === 1)
@@ -699,6 +700,42 @@ test('the wake word gate is WebUI-only: a desktop client keeps listening', async
   assert.equal(detectors.length, 0)
   const toolNames = frontendTools(frontends[0].agentContexts.at(-1)).map(tool => tool.function.name)
   assert.equal(toolNames.includes('stop_listening'), false)
+  // Nor does a stop phrase: this client shows no armed state.
+  userTurn(frontends[0], 'item-d1', 'Stop listening.')
+  client.send({ type: 'audio.append', audio: chunk(2) })
+  await waitUntil(() => frontends[0].appended.length === 2)
+  assert.equal(client.listening().state, 'always')
+  client.socket.close()
+})
+
+// Regression (live): in always mode "Stop listening." was answered ("Listening
+// has been suspended") and the next request was still heard.
+test('in always mode a stop phrase waits for the wake word, then listens always again', async t => {
+  const { server, frontends, detectors } = await startGateway(t, { listeningMode: 'always' })
+  const client = await connect(server)
+  const frontend = frontends[0]
+  assert.equal(client.listening().state, 'always')
+
+  userTurn(frontend, 'item-p1', 'Stop listening.')
+  await waitUntil(() => client.listening().state === 'armed')
+  assert.equal(client.listening().reason, 'stop')
+  assert.ok(client.received.some(event => (
+    event.type === 'playback.clear' && event.reason === 'stop_listening'
+  )))
+
+  // Only the wake word detector hears it now.
+  const appended = frontend.appended.length
+  client.send({ type: 'audio.append', audio: chunk(1) })
+  await waitUntil(() => detectors[0]?.pushed.length === 1)
+  assert.equal(frontend.appended.length, appended)
+
+  // A confirmed wake listens always again.
+  detectors[0].options.onDetected()
+  await waitUntil(() => client.listening().state === 'awake')
+  userTurn(frontend, 'item-p2', 'Hey Jarvis, what time is it?')
+  await waitUntil(() => client.listening().state === 'always')
+  client.send({ type: 'audio.append', audio: chunk(2) })
+  await waitUntil(() => frontend.appended.at(-1) === chunk(2))
   client.socket.close()
 })
 

@@ -1,6 +1,7 @@
 export const IGNORE_INPUT_TOOL_NAME = 'ignore_input'
 export const STOP_LISTENING_TOOL_NAME = 'stop_listening'
-// Present while the listening mode is wake_word.
+// Present while there is a wake word to stop listening for: the WebUI, in
+// either listening mode.
 export const WAKE_WORD_LISTENING_CAPABILITY = 'listening.wake_word'
 
 const noArguments = {
@@ -78,8 +79,7 @@ export function listeningToolHandlers(runtime) {
       return silentOutput(runtime, context, { status: 'ignored' })
     },
     [STOP_LISTENING_TOOL_NAME]: context => {
-      const stopped = runtime.listeningGate?.stop(
-        'stop',
+      const stopped = runtime.listeningGate?.stopListening(
         context.callContext?.responseId || context.event?.response_id,
       ) === true
       return silentOutput(

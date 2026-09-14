@@ -27,12 +27,11 @@ const STOP_PHRASES = new Set([
   'stop listening now',
   'go to sleep',
   'thats all',
-  'never mind',
-  'nevermind',
   '停止监听',
   '别听了',
-  '不用了',
 ])
+// Only in wake word mode: in always mode they just cancel the answer.
+const WAKE_WORD_STOP_PHRASES = new Set(['never mind', 'nevermind', '不用了'])
 
 const WAKE_WORD_PREFIXES = [
   'hey jarvis', 'jarvis', 'hey lisa', 'lisa', 'hey megan', 'megan', 'hey mycroft', 'mycroft',
@@ -81,7 +80,7 @@ export function isWakeWordOnly(wakeWord, transcript) {
   return text.split(/\s+/u).filter(Boolean).every(word => WAKE_WORD_FILLERS.has(word))
 }
 
-export function isStopListeningPhrase(transcript) {
+export function isStopListeningPhrase(transcript, { wakeWordMode = true } = {}) {
   let text = String(transcript || '')
     .toLowerCase()
     .replace(/['’`]/gu, '')
@@ -90,7 +89,7 @@ export function isStopListeningPhrase(transcript) {
     .trim()
   const prefix = WAKE_WORD_PREFIXES.find(word => text.startsWith(`${word} `))
   if (prefix) text = text.slice(prefix.length + 1)
-  return STOP_PHRASES.has(text)
+  return STOP_PHRASES.has(text) || (wakeWordMode && WAKE_WORD_STOP_PHRASES.has(text))
 }
 
 // The engine (onnxruntime-web + models) loads only once a connection is armed.
@@ -185,14 +184,7 @@ export class ListeningGate {
     const previous = this.settings
     this.settings = { ...next }
     if (!this.wakeWordMode) {
-      this.#clearTimer()
-      this.armWhenIdle = false
-      this.#endWakeCheck(false)
-      this.#closeDetector()
-      this.#clearPreRoll()
-      if (this.state !== ListeningState.ALWAYS) {
-        this.#transition(ListeningState.ALWAYS, 'mode_changed')
-      }
+      this.#listenAlways('mode_changed')
       return
     }
     if (this.state === ListeningState.ALWAYS) {
@@ -280,11 +272,21 @@ export class ListeningGate {
     this.#startTimer(ms + FOLLOW_UP_GRACE_MS, 'follow_up_expired')
   }
 
-  // Re-arm on request (stop phrase, stop_listening). Only
-  // meaningful in wake_word mode.
+  // Re-arm when the microphone goes away (released, muted, suspended,
+  // sleeping). Only meaningful in wake_word mode.
   stop(reason, responseId = '') {
     if (!this.wakeWordMode) return false
     this.arm(reason)
+    this.quietResponseId = String(responseId || '')
+    return true
+  }
+
+  // The user asked to stop listening (a stop phrase, stop_listening): wait for
+  // the wake word, in always mode too. The response that asked must not wake
+  // the gate again with its own audio.
+  stopListening(responseId = '') {
+    if (!this.settings.wakeWord) return false
+    this.arm('stop')
     this.quietResponseId = String(responseId || '')
     return true
   }
@@ -297,6 +299,8 @@ export class ListeningGate {
     if (!this.wakeCheck?.turnIds.has(turnId)) return true
     if (!mentionsWakeWord(this.wakeCheck.wakeWord, transcript)) return false
     this.#endWakeCheck(true)
+    // Woken after a stop in always mode: listen as always again.
+    if (!this.wakeWordMode) this.#listenAlways('wake_word')
     return true
   }
 
@@ -319,6 +323,15 @@ export class ListeningGate {
     this.#clearTimer()
     this.#closeDetector()
     this.#clearPreRoll()
+  }
+
+  #listenAlways(reason) {
+    this.#clearTimer()
+    this.armWhenIdle = false
+    this.#endWakeCheck(false)
+    this.#closeDetector()
+    this.#clearPreRoll()
+    if (this.state !== ListeningState.ALWAYS) this.#transition(ListeningState.ALWAYS, reason)
   }
 
   #noSpeechMs() {

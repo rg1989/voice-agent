@@ -314,6 +314,13 @@ test('recognises bare stop phrases, with or without a leading wake word', () => 
   ]) {
     assert.equal(isStopListeningPhrase(phrase), false, phrase)
   }
+  // In always mode "never mind" only cancels the answer.
+  for (const phrase of ['Never mind', 'nevermind', '不用了！']) {
+    assert.equal(isStopListeningPhrase(phrase, { wakeWordMode: false }), false, phrase)
+  }
+  for (const phrase of ['Stop listening.', 'Go to sleep!', "That's all", '别听了']) {
+    assert.equal(isStopListeningPhrase(phrase, { wakeWordMode: false }), true, phrase)
+  }
 })
 
 test('only the first transcript of a wake has to name the wake word', () => {
@@ -500,9 +507,38 @@ test('the response that stopped listening does not wake the gate with its own au
   const kit = harness()
   kit.gate.append(chunk(1))
   kit.detectors[0].options.onDetected()
-  kit.gate.stop('stop', 'resp-stop')
+  kit.gate.stopListening('resp-stop')
   kit.gate.assistantSpeaking('resp-stop')
   assert.equal(kit.gate.state, 'armed')
   kit.gate.assistantSpeaking('resp-later')
   assert.equal(kit.gate.state, 'awake')
+})
+
+// Regression (live): in always mode "Stop listening." changed nothing, so the
+// next thing said was still heard.
+test('in always mode stopping listening waits for the wake word, then listens always again', () => {
+  const kit = harness({ listeningMode: 'always' })
+  assert.equal(kit.gate.stopListening(), true)
+  assert.deepEqual(kit.gate.status(), { state: 'armed', reason: 'stop', wakeWord: 'hey_jarvis' })
+  kit.gate.append(chunk(1))
+  assert.deepEqual(kit.passed(), [])
+
+  // A false wake keeps waiting.
+  kit.detectors[0].options.onDetected()
+  kit.gate.speechStarted('turn-1')
+  assert.equal(kit.gate.verifyTranscript('turn-1', 'hey travis what time is it'), false)
+  kit.gate.arm('unverified')
+
+  kit.detectors[0].options.onDetected()
+  kit.gate.speechStarted('turn-2')
+  assert.equal(kit.gate.verifyTranscript('turn-2', 'Hey Jarvis, what time is it?'), true)
+  assert.deepEqual(kit.gate.status(), { state: 'always', reason: 'wake_word', wakeWord: 'hey_jarvis' })
+  assert.equal(kit.detectors[0].closed, true)
+  kit.gate.append(chunk(2))
+  assert.equal(kit.passed().at(-1), chunk(2))
+
+  // A client with no wake word has nothing to wait for.
+  const none = harness({ listeningMode: 'always', wakeWord: '' })
+  assert.equal(none.gate.stopListening(), false)
+  assert.equal(none.gate.state, 'always')
 })

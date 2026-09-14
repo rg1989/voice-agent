@@ -433,11 +433,11 @@ export function attachRealtimeGateway(server, {
     )
     // Only the WebUI shows the armed state and plays the wake chime. Other
     // clients (the desktop orb with its own wake word, CLI, mobile) keep
-    // listening as before.
+    // listening as before, with no wake word to stop listening for.
     const listeningSettings = () => (
       descriptor.type === 'web'
         ? liveSettings.get()
-        : { ...liveSettings.get(), listeningMode: 'always' }
+        : { ...liveSettings.get(), listeningMode: 'always', wakeWord: '' }
     )
     const getAgentContext = () => ({
       client: clientContext,
@@ -1167,11 +1167,14 @@ export function attachRealtimeGateway(server, {
         return 'wake_word_unverified'
       },
       onTranscriptCompleted: ({ turnId, transcript }) => {
-        if (!listeningGate.wakeWordMode || !isStopListeningPhrase(transcript)) return
+        if (
+          !listeningGate.settings.wakeWord
+          || !isStopListeningPhrase(transcript, { wakeWordMode: listeningGate.wakeWordMode })
+        ) return
         // A bare stop phrase gets no answer: cancel what is already coming and
-        // go back to waiting for the wake word.
+        // wait for the wake word, in always mode too.
         silenceTurn(turnId, 'stop_listening')
-        listeningGate.stop('stop')
+        listeningGate.stopListening()
       },
       onSpeechStopped: fields => {
         connectionLogger.info('realtime.provider.speech_stopped', fields)
