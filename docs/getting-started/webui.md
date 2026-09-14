@@ -83,11 +83,11 @@ Some changes apply at once. The other changes restart the Gateway, which interru
 
 | Applies at once | Restarts the Gateway |
 | --- | --- |
-| Voice, Robotic voice, Persona, Listening | Brain, Computer control, Working folder, Turn taking, Privacy |
+| Voice, Robotic voice, Persona, Listening, Media | Brain, Computer control, Working folder, Turn taking, Privacy |
 
 During a restart, the panel shows a notice. The page reloads when the Gateway is back. If the Gateway is not back after 45 seconds, the panel shows **Restart timed out. Please refresh the page.**
 
-On a paired phone or other remote device, you can change Voice, Robotic voice, Persona and Listening. The other settings and the folder browser work only on the computer that runs the Gateway.
+On a paired phone or other remote device, you can change Voice, Robotic voice, Persona and Listening. The other settings, including Media, and the folder browser work only on the computer that runs the Gateway.
 
 ### Brain
 
@@ -125,6 +125,25 @@ When **Wake word** is selected, the panel also shows these settings:
 - **Keep listening after a reply**: 0 to 10 seconds, in steps of 1 second. The default is 5 seconds.
 
 For details, see [Wake word listening](#wake-word-listening).
+
+### Media
+
+These settings control the browser that plays YouTube and YouTube Music when you ask by voice. The changes apply at once, without a restart.
+
+Select the player browser:
+
+| Option | Details |
+| --- | --- |
+| **Automatic** (default) | Uses the first installed browser. On macOS the order is Google Chrome, Microsoft Edge, Brave, Chromium. On Linux the order is Chromium, Google Chrome, Brave, Microsoft Edge. |
+| **Google Chrome**, **Microsoft Edge**, **Chromium**, **Brave** | Uses this browser. A browser that is not installed shows **Not installed**, and you cannot select it. |
+
+If the Gateway finds no supported browser, the panel shows **No supported browser found. Install Google Chrome, Microsoft Edge, Brave or Chromium.**
+
+The player keeps its own profile, `player/<browser>/` in the configuration directory. It does not use the profile of your everyday browser.
+
+- **Set up player** opens YouTube in the player, in a normal window. Sign in to your account one time. Later playback uses that sign-in. If the player does not open, the panel shows **The player did not open**.
+- **Pause while we talk** is on by default. The player pauses when you start to speak, and it plays again after the assistant answers.
+- **Return to the assistant when playback stops** is off by default. When it is on and playback stops, for example because you stop it or close the player, a client that can show the conversation brings its conversation window forward. The desktop app is such a client.
 
 ### Computer control
 
