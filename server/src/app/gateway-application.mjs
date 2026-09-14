@@ -717,12 +717,37 @@ app.get('/api/usage', (req, res) => {
   res.json(usageMeter.snapshot(config.audioModel))
 })
 
+// What a paired remote device may change: how the assistant sounds and listens.
+// The other settings reconfigure this computer (the backend agent, its folder,
+// computer control, a restart), so like device management they stay local. An
+// allowlist, so a new setting is local-only until someone decides otherwise.
+const REMOTE_SETTING_KEYS = new Set([
+  'voice',
+  'persona',
+  'listeningMode',
+  'wakeWord',
+  'followUpSeconds',
+  'cameraEnabled',
+  'roboticVoice',
+])
+
 app.get('/api/settings/folders', (req, res) => {
+  if (req.identity.access !== 'local') {
+    return res.status(403).json({ error: 'folders can only be browsed on the Gateway computer' })
+  }
   res.setHeader('cache-control', 'no-store')
   res.json(listFolders(req.query?.path))
 })
 
 app.post('/api/settings', (req, res) => {
+  const localOnly = req.identity.access === 'local'
+    ? []
+    : Object.keys(req.body || {}).filter(key => !REMOTE_SETTING_KEYS.has(key))
+  if (localOnly.length) {
+    return res.status(403).json({
+      error: `only the Gateway computer can change: ${localOnly.join(', ')}`,
+    })
+  }
   let result
   try {
     result = updateRuntimeSettings(req.body || {})

@@ -432,8 +432,8 @@ export function scheduleRestart({ delayMs = 250 } = {}) {
 
 // Folder picker. A browser cannot hand back a real path from <input type=file>
 // — that is a security boundary, not an oversight — so the Gateway lists
-// directories and the UI walks them. Same-origin and local identity already
-// gate this route, and the backend agent can read the disk anyway.
+// directories and the UI walks them. The route is local-only
+// (gateway-application.mjs): a paired remote device cannot browse the host.
 const FOLDER_PAGE = 500
 
 function homeDirectory() {
