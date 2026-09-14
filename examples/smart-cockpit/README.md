@@ -143,7 +143,7 @@ the foreground MCP tools above, Gateway built-ins, and capability-gated tools.
 | Function tool source | Count | Tools |
 |---|---:|---|
 | Gateway built-ins, default | 8 | `spawn_thinking`, `schedule_reminder`, `cancel_agent_task`, `get_agent_task_status`, `get_current_time`, `memory`, `notes`, `ignore_input` |
-| Gateway built-ins, conditional | up to +8 | `knowledge`, `recall`, `respond_permission`, `respond_agent_input`, `web_search`, `fetch_url`, `enter_sleep`, `stop_listening`; visible only when the matching knowledge, session digest, retrieval, pending permission, pending input, client sleep action or wake-word listening capability exists |
+| Gateway built-ins, conditional | up to +10 | `knowledge`, `recall`, `respond_permission`, `respond_agent_input`, `web_search`, `fetch_url`, `enter_sleep`, `stop_listening`, `play_media`, `control_media`; visible only when the matching knowledge, session digest, retrieval, pending permission, pending input, client sleep action, wake-word listening or media player capability exists |
 | Cockpit foreground MCP tools | 37 | `vehicle`, `navigation`, `music`, `weather`, and the 3 `custom-skills` tools; model-visible names are `mcp__cockpit__*` |
 | **Default Realtime base total** | **45** | 8 Gateway built-ins + 37 cockpit foreground MCP tools, before conditional tools |
 

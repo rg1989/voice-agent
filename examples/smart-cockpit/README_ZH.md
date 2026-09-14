@@ -119,7 +119,7 @@ MCP 工具，还包含 Gateway 内置工具和按能力动态启用的工具。
 | Function 工具来源 | 数量 | 工具 |
 |---|---:|---|
 | Gateway 内置默认工具 | 8 | `spawn_thinking`、`schedule_reminder`、`cancel_agent_task`、`get_agent_task_status`、`get_current_time`、`memory`、`notes`、`ignore_input` |
-| Gateway 内置条件工具 | 最多 +8 | `knowledge`、`recall`、`respond_permission`、`respond_agent_input`、`web_search`、`fetch_url`、`enter_sleep`、`stop_listening`；仅在对应知识库、会话摘要、检索、待确认权限、待补充输入、客户端休眠动作或唤醒词聆听可用时暴露 |
+| Gateway 内置条件工具 | 最多 +10 | `knowledge`、`recall`、`respond_permission`、`respond_agent_input`、`web_search`、`fetch_url`、`enter_sleep`、`stop_listening`、`play_media`、`control_media`；仅在对应知识库、会话摘要、检索、待确认权限、待补充输入、客户端休眠动作、唤醒词聆听或媒体播放器可用时暴露 |
 | 座舱前台 MCP 工具 | 37 | `vehicle`、`navigation`、`music`、`weather` 及 3 个 `custom-skills` 工具，模型中以 `mcp__cockpit__*` 名称出现 |
 | **默认 Realtime 基础合计** | **45** | 8 个 Gateway 内置工具 + 37 个座舱前台 MCP 工具，不含按能力加入的条件工具 |
 
