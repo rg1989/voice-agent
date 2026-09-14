@@ -2,7 +2,17 @@
 
 For current news, weather, or web sources, ask the assistant to “Search for…”. It can use
 available search tools and answer from the results. Chat, search, and backend work are separate
-capabilities; search itself does not require a Backend Agent.
+capabilities.
+
+The frontend `web_search` and `fetch_url` tools are off by default. The assistant then passes
+search requests to the Backend Agent. To let the frontend search without a Backend Agent, turn
+the tools on:
+
+```dotenv
+QWEN_AUDIO_WEB_TOOLS_ENABLED=true
+```
+
+The rest of this page applies when the frontend web tools are on.
 
 ## Default Search and Custom Services
 

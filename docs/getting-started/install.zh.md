@@ -1,5 +1,7 @@
 # 安装与升级
 
+> **本 fork：** 本页的安装包、npm 包和 GitHub 地址安装的都是上游 QwenAudio/qwen-audio-agent，不包含本 fork 的功能。要运行本 fork，请按 [rg1989/voice-agent](https://github.com/rg1989/voice-agent) README 中的源码步骤操作。
+
 ## 版本选择
 
 - **日常使用**：选择 [GitHub Release](https://github.com/QwenAudio/qwen-audio-agent/releases/latest)

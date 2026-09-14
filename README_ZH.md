@@ -8,6 +8,36 @@
 [![license](https://img.shields.io/github/license/QwenAudio/qwen-audio-agent)](LICENSE)
 [![WeChat](https://img.shields.io/badge/WeChat-%E5%8A%A0%E5%85%A5%E8%AE%A8%E8%AE%BA-07C160?logo=wechat&logoColor=white)](#交流与分享)
 
+## 关于本 fork
+
+本仓库是 [QwenAudio/qwen-audio-agent](https://github.com/QwenAudio/qwen-audio-agent) 的 fork。npm 包 `qwen-audio-agent` 安装的是上游版本，[用户手册](https://qwenaudio.github.io/qwen-audio-agent/zh/)描述的也是上游版本，二者都不包含下面列出的功能。
+
+从源码运行本 fork，Node.js 与 npm 的版本要求见“安装”一节：
+
+```bash
+git clone https://github.com/rg1989/voice-agent.git
+cd voice-agent
+npm ci                              # 同时构建 WebUI
+node cli/bin/qwenaudio.mjs config   # 创建 config.env，填入 DASHSCOPE_API_KEY
+bin/restart                         # 启动 Gateway：http://127.0.0.1:3101
+```
+
+请在克隆目录里运行 Gateway。设置面板通过 `bin/restart` 重启 Gateway，而全局安装（`npm run install:global`）不包含这个脚本。要用导出的设置文件配置一台电脑，按“安装”下“迁移到另一台电脑”的说明使用 `bin/setup`。
+
+### 本 fork 新增的功能
+
+- **WebUI 设置面板**：选择大脑（Claude Code、Codex、Oh My Pi 或 No agent）、工作目录、音色以及下面各项设置。Oh My Pi（安装 `omp` 后才会列出）使用 Oh My Pi 中设置的服务商和模型，例如 Z.AI coding plan 订阅。
+- **顶栏**：工作目录切换、会话历史（打开或删除过去的对话），以及按语音模型 token 用量估算花费的计量。
+- **WebUI 唤醒词聆听**：本地检测器听到 Hey Jarvis、Hey Lisa、Hey Megan、Hey Mycroft 或 GLaDOS 之前，麦克风音频不会发给语音模型。
+- **每个音色有自己的人设**：九个 Qwen-Omni Realtime 音色各有人设，语音和大脑都按这个人设说话。可以在设置里试听音色、编辑人设。可选的机械音效会处理回答的音频。
+- **断句调节**：设置停顿多久算说完（0.2 到 6 秒）和语音检测阈值。
+- **查资料交给后台 Agent**：语音会把查资料和自己答不了的问题交给后台 Agent，语音模型自己的联网搜索默认关闭。可选设置只把每个结果的一句话摘要（后台写的 `VOICE:` 那一行）发给语音模型。
+- **电脑控制需要批准**：后台 Agent 使用你的屏幕、鼠标或键盘之前，Gateway 会先询问，默认每个任务问一次。也可以在设置里改为每次都问、从不询问或关闭电脑控制。
+- **一条命令配置另一台电脑**：见“安装”下的“迁移到另一台电脑”。
+- **辅助脚本**：`bin/brain [claude|codex|omp|none]`、`bin/voice [name]` 和 `bin/folder [/path/to/project]` 分别设置大脑、音色和工作目录，然后重启 Gateway；不带参数时显示当前值。`bin/restart` 重启 Gateway。
+
+WebUI 详细说明见 [WebUI 指南](docs/getting-started/webui.zh.md)，环境变量见[配置说明](docs/configuration.zh.md)。
+
 ## Agent，始终在场
 
 真正的交流，不该在说完一句话后，就陷入漫长的等待。也不该因为 Agent 正在查资料、调用工具或处理任务，整场对话就此暂停。
@@ -101,8 +131,32 @@ https://github.com/user-attachments/assets/ab570531-8da9-4af4-93fa-244bb6614c05
 npm install -g qwen-audio-agent
 ```
 
+这条命令安装的是上游 qwen-audio-agent，不包含本 fork 的功能。要运行本 fork，请按上文“关于本 fork”从源码安装。
+
 从源码安装、从 GitHub 安装最新代码以及获取 DashScope API Key 的详细步骤见
 [安装指南](docs/getting-started/install.zh.md)。
+
+### 迁移到另一台电脑
+
+要让第二台电脑（macOS 13+，或 glibc 2.28+ 的 Linux，Intel 或 ARM）使用同样的 Key 和设置，先在已经正常使用的电脑上导出一次：
+
+```bash
+node bin/setup-bundle.mjs export
+```
+
+命令会要求输入口令，然后写出加密文件 `~/Desktop/voice-agent-setup.qwsetup`，其中包含 Gateway 配置（API Key、音色、大脑和其他设置）、默认人设（`ASSISTANT.md`）和记忆笔记，以及 Oh My Pi 的服务商、登录信息和 Skill。把文件复制到另一台电脑（U 盘、`scp`，或网盘，口令另行发送），然后在那台电脑上的本仓库克隆目录里运行：
+
+```bash
+bin/setup ~/voice-agent-setup.qwsetup
+```
+
+没有克隆仓库时：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rg1989/voice-agent/main/bin/setup | bash -s -- ~/voice-agent-setup.qwsetup
+```
+
+脚本会为当前用户安装 Node、Bun 和 Oh My Pi（不需要管理员密码），构建应用，恢复设置文件，并在 http://127.0.0.1:3101 启动 Gateway。在 Linux 上，如果缺少 `curl`、`tar` 或 `unzip`，脚本会用 apt 或 dnf 安装，此时 sudo 会要求输入密码（上面的 `curl` 命令本身需要先装好 `curl`）。对话历史、对各音色人设的修改和 Claude Code 登录不会迁移；如果用 Claude Code 当大脑，请先运行一次 `claude`。电脑控制需要 macOS 14+；在 Linux 上需要支持 AT-SPI 无障碍接口的桌面会话。
 
 ## 快速开始
 

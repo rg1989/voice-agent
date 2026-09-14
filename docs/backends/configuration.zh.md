@@ -210,6 +210,30 @@ ACP_WORKSPACE=
 JSON 字符串数组，以便参数中包含空格时仍能准确解析。它使用标准 ACP Session 和
 Gateway 提供的 Session MCP 工具，不假设某个 Agent 私有的启动、权限或 UI 能力。
 
+Oh My Pi 通过这个通用入口接入，使用 Oh My Pi 自己（`~/.omp`）配置的 Provider 和模型，
+例如 Z.AI 的 coding plan：
+
+```dotenv
+AGENT_PROTOCOL=acp
+ACP_COMMAND=/absolute/path/to/omp
+ACP_ARGS=["acp"]
+ACP_LABEL=Oh My Pi
+```
+
+在 WebUI 设置面板中选择 Oh My Pi 会写入上面 4 项，设置面板通过 `Oh My Pi` 标签识别这一选择。
+只有找到 `omp` 可执行文件时，设置面板才提供 Oh My Pi：依次检查 `OMP_BIN`、`~/.bun/bin/omp`、
+`/usr/local/bin/omp` 和 `/opt/homebrew/bin/omp`，不搜索 `PATH`。
+
+除非 `QWEN_AUDIO_AGENT_COMPUTER_USE` 设为 `off`，[电脑控制](../configuration/backend.zh.md#computer-control)默认开启。开启期间，Gateway 会为通用 ACP
+进程设置 `OMP_MCP_TIMEOUT_MS`，让 MCP 调用可以等待用户批准：未设置或小于 `180000` 的值改为
+`180000`（180 秒），`0`（不限时）和更大的值保持不变。电脑控制关闭时，Gateway 不设置该变量；
+如需传入自己的值，请把 `OMP_MCP_TIMEOUT_MS` 加入 `QWEN_AUDIO_AGENT_ACP_FORWARD_ENV`。高级配置：
+
+```dotenv
+OMP_BIN=
+OMP_MCP_TIMEOUT_MS=
+```
+
 不提供 ACP 的办事系统可以在自定义 Node 启动器中实现 `BackendPort`，详见
 [Backend Adapter SDK](../reference/backend-adapter-sdk.zh.md)。SDK 接入不新增
 `AGENT_PROTOCOL` 名称，也不会让配置文件动态加载任意代码。

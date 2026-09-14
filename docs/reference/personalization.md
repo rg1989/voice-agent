@@ -36,6 +36,13 @@ assistant instance's default name, personality, relationship stance, and express
 Changes apply to the next voice session. You can also
 point `QWEN_AUDIO_AGENT_ASSISTANT_PROFILE_PATH` to another file.
 
+The selected voice (`QWEN_OMNI_REALTIME_VOICE` or `QWEN_AUDIO_REALTIME_VOICE`) picks the persona
+file that both the voice and the Backend Agent use: `personas/<Voice>.md` next to `ASSISTANT.md`.
+The Gateway copies the packaged `config/frontend-agent/personas/` templates there and never
+overwrites existing files. If the file is missing or empty, `ASSISTANT.md` applies. WebUI Settings
+edits the file of the selected voice. A custom `QWEN_AUDIO_AGENT_ASSISTANT_PROFILE_PATH` or a
+Frontend Profile turns per-voice files off.
+
 `ASSISTANT.md` is neither conversation memory nor runtime policy. The assistant never changes it
 through the `memory` tool. Statements about tools, permissions, safety, memory, task routing, or
 capabilities cannot override `PROMPT.md`.

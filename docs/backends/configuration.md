@@ -229,6 +229,33 @@ recommended to be written as a JSON string array so that arguments containing sp
 be parsed accurately. It uses standard ACP Sessions and Gateway-provided Session MCP tools, and
 does not assume any Agent's private startup, permission, or UI capabilities.
 
+Oh My Pi connects through this generic entry point. It uses the provider and model set in
+Oh My Pi itself (`~/.omp`), for example a Z.AI coding plan. Configure it like this:
+
+```dotenv
+AGENT_PROTOCOL=acp
+ACP_COMMAND=/absolute/path/to/omp
+ACP_ARGS=["acp"]
+ACP_LABEL=Oh My Pi
+```
+
+Selecting Oh My Pi in the WebUI Settings panel writes these 4 values. Settings recognizes the
+selection by the `Oh My Pi` label. Settings offers Oh My Pi only when it finds the `omp`
+executable. It checks `OMP_BIN`, then `~/.bun/bin/omp`, `/usr/local/bin/omp` and
+`/opt/homebrew/bin/omp`. It does not search `PATH`.
+
+[Computer control](../configuration/backend.md#computer-control) is on unless `QWEN_AUDIO_AGENT_COMPUTER_USE` is `off`. While it is on,
+the Gateway sets `OMP_MCP_TIMEOUT_MS` for the generic ACP process, so an MCP call can wait for
+the user's approval. An unset or smaller value becomes `180000` (180 s). The Gateway keeps `0`
+(no timeout) and larger values. While computer control is off, the Gateway does not set this
+variable. To pass your own value, add `OMP_MCP_TIMEOUT_MS` to `QWEN_AUDIO_AGENT_ACP_FORWARD_ENV`.
+Advanced configuration:
+
+```dotenv
+OMP_BIN=
+OMP_MCP_TIMEOUT_MS=
+```
+
 Action systems without ACP can implement `BackendPort` in a custom Node
 launcher; see the [Backend Adapter SDK](../reference/backend-adapter-sdk.md). SDK
 composition does not add an `AGENT_PROTOCOL` name or let configuration files

@@ -177,6 +177,13 @@ them to the configuration file:
 | `QWEN_AUDIO_FRONTEND_OPENAPI_CONFIG` | Empty; absolute path to the versioned frontend OpenAPI JSON config file |
 | `QWEN_AUDIO_REALTIME_VOICE` | Empty; optional Audio-family override, otherwise runtime uses `longanqian` |
 | `QWEN_OMNI_REALTIME_VOICE` | Empty; optional Omni-family override, otherwise runtime uses `Ethan` |
+| `QWEN_AUDIO_TURN_THRESHOLD` | Empty; not sent, so the model default applies. DashScope only: a value from `0` to `1`, sent as `turn_detection.threshold`. A higher value makes background sound and echo less likely to count as speech |
+| `QWEN_AUDIO_TURN_SILENCE_MS` | Empty; not sent, so the model default applies. DashScope only: `200` to `6000` milliseconds of silence that end a turn, sent as `turn_detection.silence_duration_ms`. A higher value lets the user pause longer mid-sentence |
+| `QWEN_AUDIO_VOICE_SUMMARY_ONLY` | `false`; only `true` turns it on. The voice model then gets only the `VOICE:` line of a Backend Agent result, up to 900 characters. The Gateway asks the backend to write that line. Without the line, the voice model gets `Done. The full result is on screen.` The Gateway sends reminders and permission prompts unchanged |
+| `QWEN_AUDIO_LISTENING_MODE` | `always`; `always` sends all microphone audio to the voice model. `wake_word` sends no audio until the Gateway hears the wake word |
+| `QWEN_AUDIO_WAKE_WORD` | `hey_jarvis`; also `hey_lisa`, `hey_megan`, `hey_mycroft` or `glados`. The Gateway detects the wake word on its host with openWakeWord models. It downloads a needed model file from GitHub once and checks it |
+| `QWEN_AUDIO_FOLLOW_UP_SECONDS` | `5`; rounded to whole seconds from `0` to `10`. In `wake_word` mode, the Gateway keeps listening this long after a reply. Then it waits for the wake word again |
+| `QWEN_AUDIO_ROBOTIC_VOICE` | `false`; set to `true` to apply a robotic filter to the reply audio the Gateway sends to clients |
 | `SPEECH_TO_SPEECH_REALTIME_URL` | `ws://127.0.0.1:8765/v1/realtime` |
 | `SPEECH_TO_SPEECH_AUTH_TOKEN` | Empty; only for proxies with Bearer authentication |
 | `MINICPM_O_REALTIME_URL` | `ws://127.0.0.1:8006/v1/realtime?mode=audio` |
@@ -184,6 +191,12 @@ them to the configuration file:
 | `QWEN_AUDIO_AGENT_IDENTITY_MODE` | `personal` |
 | `QWEN_AUDIO_AGENT_TUI_AUDIO_MODE` | `half` |
 | `AGENT_TIMEOUT_MS` | `300000`; timeout for ACP connection initialization and bounded control requests, not active Agent turns |
+
+The listening mode, wake word and follow-up time apply to WebUI connections only. In both listening
+modes, a stop phrase such as “stop listening” makes the Gateway wait for the wake word. The Gateway
+reads `QWEN_AUDIO_LISTENING_MODE`, `QWEN_AUDIO_WAKE_WORD`, `QWEN_AUDIO_FOLLOW_UP_SECONDS` and
+`QWEN_AUDIO_ROBOTIC_VOICE` when it starts. When you change them in WebUI Settings, open voice
+connections apply the change without a Gateway restart.
 
 The macOS TUI CoreAudio helper is compiled by default to
 `~/Library/Caches/qwaudio/tui/macos-voice-io`, requiring no additional configuration. It

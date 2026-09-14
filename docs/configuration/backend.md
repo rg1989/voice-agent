@@ -165,3 +165,22 @@ and execution host configurations, and cannot be safely and completely expressed
 unified switch; when `full` is selected, the Gateway explicitly refuses to start, requiring
 separate configuration via OpenClaw's own method. The highest permission amplifies the risk of
 misoperation and should only be enabled in trusted projects and trusted prompt environments.
+
+<a id="computer-control"></a>
+
+## Computer Control
+
+Backend Agents that receive Gateway Session MCP tools can take screenshots, click and type on the
+Gateway host through open-computer-use. Every call passes through a Gateway approval gate, whatever
+the Agent's own permission model. `QWEN_AUDIO_AGENT_COMPUTER_USE` sets when the Gateway asks:
+
+- `per_task` (default): asks the first time a task needs the computer, then allows it until the
+  task ends.
+- `every_action`: asks before every screenshot, click and keystroke.
+- `always`: never asks. Use it only if you trust every task.
+- `off`: the Gateway does not offer computer control.
+
+The older spellings `false`, `0`, `no` and `disabled` mean `off`. `on`, an empty value and any other
+value mean `per_task`. A refusal holds for the rest of the task.
+`QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE=full` does not approve computer control. WebUI Settings
+can change this value. Saving the change restarts the Gateway.

@@ -156,6 +156,13 @@ QWEN_AUDIO_AGENT_OPENCODE_ISOLATE_USER_CONFIG=true
 | `QWEN_AUDIO_FRONTEND_OPENAPI_CONFIG` | 空；前台 OpenAPI 版本化 JSON 配置文件的绝对路径 |
 | `QWEN_AUDIO_REALTIME_VOICE` | 空；Audio 模型族的可选覆盖，未设置时运行时使用 `longanqian` |
 | `QWEN_OMNI_REALTIME_VOICE` | 空；Omni 模型族的可选覆盖，未设置时运行时使用 `Ethan` |
+| `QWEN_AUDIO_TURN_THRESHOLD` | 空；不发送，使用模型默认值。仅用于 DashScope：取值 `0` 到 `1`，作为 `turn_detection.threshold` 发送。值越高，环境音和回声越不容易被当成说话 |
+| `QWEN_AUDIO_TURN_SILENCE_MS` | 空；不发送，使用模型默认值。仅用于 DashScope：静音多少毫秒后结束本轮，取值 `200` 到 `6000`，作为 `turn_detection.silence_duration_ms` 发送。值越大，说话中间的停顿越不容易被当成说完 |
+| `QWEN_AUDIO_VOICE_SUMMARY_ONLY` | `false`；只有 `true` 会开启。开启后，后台 Agent 的结果只把 `VOICE:` 那一行（最多 900 字符）发给语音模型，Gateway 会要求后台写出这一行。缺少这一行时，语音模型只收到 `Done. The full result is on screen.`。提醒和权限确认不受影响 |
+| `QWEN_AUDIO_LISTENING_MODE` | `always`；`always` 把麦克风的全部音频发给语音模型，`wake_word` 在 Gateway 听到唤醒词之前不发送任何音频 |
+| `QWEN_AUDIO_WAKE_WORD` | `hey_jarvis`；也可设为 `hey_lisa`、`hey_megan`、`hey_mycroft` 或 `glados`。Gateway 在所在主机上用 openWakeWord 模型检测唤醒词，首次需要某个模型文件时从 GitHub 下载并校验 |
+| `QWEN_AUDIO_FOLLOW_UP_SECONDS` | `5`；取 `0` 到 `10`，四舍五入为整数秒。`wake_word` 模式下，回复结束后 Gateway 继续聆听的时长，之后重新等待唤醒词 |
+| `QWEN_AUDIO_ROBOTIC_VOICE` | `false`；设为 `true` 时，Gateway 给发往客户端的回复音频加上机器人音效 |
 | `SPEECH_TO_SPEECH_REALTIME_URL` | `ws://127.0.0.1:8765/v1/realtime` |
 | `SPEECH_TO_SPEECH_AUTH_TOKEN` | 空；仅用于带 Bearer 认证的代理 |
 | `MINICPM_O_REALTIME_URL` | `ws://127.0.0.1:8006/v1/realtime?mode=audio` |
@@ -163,6 +170,11 @@ QWEN_AUDIO_AGENT_OPENCODE_ISOLATE_USER_CONFIG=true
 | `QWEN_AUDIO_AGENT_IDENTITY_MODE` | `personal` |
 | `QWEN_AUDIO_AGENT_TUI_AUDIO_MODE` | `half` |
 | `AGENT_TIMEOUT_MS` | `300000`；ACP 连接初始化与有界控制请求的超时，不限制正在执行的 Agent 轮次 |
+
+监听模式、唤醒词和继续聆听时长只作用于 WebUI 连接。两种监听模式下，说出“停止监听”等停止语后，
+Gateway 都会重新等待唤醒词。Gateway 启动时读取 `QWEN_AUDIO_LISTENING_MODE`、`QWEN_AUDIO_WAKE_WORD`、
+`QWEN_AUDIO_FOLLOW_UP_SECONDS` 和 `QWEN_AUDIO_ROBOTIC_VOICE`；在 WebUI 设置中修改后，已打开的语音连接
+直接生效，不需要重启 Gateway。
 
 macOS TUI 的 CoreAudio 辅助程序默认编译到
 `~/Library/Caches/qwaudio/tui/macos-voice-io`，无需额外配置。它在播报期间

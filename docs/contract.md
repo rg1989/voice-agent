@@ -223,6 +223,135 @@ the default and existing clients receive no additional events.
 `session.replay`. The aliases will not be removed before health contract
 `6.0.0`. Other unlisted endpoints such as `/api/backend/ui` remain internal.
 
+### WebUI settings, usage, and session routes
+
+The first-party WebUI uses the routes below for its Settings panel, spend
+readout, and session history. They are not contract. No capability advertises
+them, and they can change in any release.
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/settings` | Current runtime settings and the options that the Settings panel shows |
+| `POST /api/settings` | Save one or more settings. Returns `{ changed, restarting, settings }` |
+| `GET /api/settings/folders?path=<folder>` | List the subfolders of one folder on the Gateway host, for the folder picker |
+| `GET /api/usage` | Local token count and cost estimate for the configured DashScope Realtime model |
+| `GET /api/sessions` | The current owner's sessions that contain messages, newest first |
+| `DELETE /api/sessions/:sessionId` | Delete one session journal and its cached conversation. Returns `{ removed }` |
+
+`GET /api/settings` returns the saved values `brain` (the backend agent),
+`folder` (its working folder), `voice`, `persona`, `personaVoice`,
+`computerUse`, `webTools`, `summaryOnly`, `turnThreshold`, `turnSilenceMs`,
+`listeningMode`, `wakeWord`, `followUpSeconds`, `cameraEnabled`, and
+`roboticVoice`. It also returns the option lists `brains`, `voices`,
+`computerUseOptions`, `listeningModes`, `wakeWords`, `turnDefaults`, and
+`followUpDefaults`. The values come from `config.env` in the config directory.
+`persona` is the character text of the voice that `personaVoice` names.
+
+`POST /api/settings` takes a JSON object with only the fields to change. The
+Gateway checks every field before it writes a file:
+
+- `brain`: an id from `brains`. `omp` also needs an `omp` command that the Gateway can find.
+- `folder`: an existing folder. A leading `~` expands to the home folder of the Gateway process. An empty string clears the setting.
+- `voice`: an id from `voices`.
+- `persona`: text with 1 to 4000 characters.
+- `computerUse`: `per_task`, `every_action`, `always`, or `off`.
+- `listeningMode`: `always` or `wake_word`.
+- `wakeWord`: an id from `wakeWords`.
+- `turnThreshold`: a number from 0 to 1.
+- `turnSilenceMs`: a number from 200 to 6000.
+- `followUpSeconds`: a number from 0 to 10.
+- `webTools`, `summaryOnly`, `cameraEnabled`, and `roboticVoice`: booleans.
+
+The Gateway clamps a number that is outside its range. A value that is not a
+number returns `400`. The Gateway ignores unknown fields, an empty `brain` or
+`voice`, and a text or boolean field of the wrong type. The response is
+`{ changed, restarting, settings }`. `changed` lists every field that the
+request saved, also when the value did not change. `settings` has the shape of
+the `GET /api/settings` response.
+
+| Gateway restart | Fields |
+| --- | --- |
+| Not needed | `voice`, `persona`, `listeningMode`, `wakeWord`, `followUpSeconds`, `cameraEnabled`, `roboticVoice` |
+| Needed | `brain`, `folder`, `computerUse`, `webTools`, `summaryOnly`, `turnThreshold`, `turnSilenceMs` |
+
+The Gateway writes `persona` to `personas/<voice>.md` in the config directory.
+If a deployment sets its own assistant profile path, the Gateway writes that
+file instead. It writes all other fields to `config.env`.
+
+If `changed` contains only fields that need no restart, the response has
+`restarting: false`. Open voice connections apply the listening mode, wake
+word, follow-up time, camera, and robotic voice values at once. After a saved
+`voice` or `persona`, each open voice session sends its instructions to the
+model again. The server does not change the output voice of an open session.
+The WebUI sends `session.output_voice.update` for that. A new connection
+without `connection.output_voice` keeps the voice that the Gateway loaded at
+start.
+
+If `changed` contains a field that needs a restart, the Gateway starts the
+`bin/restart` helper as a detached process. The response has
+`restarting: true`. The restart also occurs when the saved value is the same
+as before. The helper stops the process that listens on port 3101, starts
+`node cli/bin/qwenaudio.mjs`, and waits for `/api/health`. Open connections
+close during the restart. The WebUI polls `/api/health` and then reloads the
+page.
+
+`POST /api/settings` returns these errors:
+
+- `400` with `{ error }`: a value is not valid, for example `unknown brain: <id>` or `no such folder: <path>`. A failed file write also returns `400`.
+- `501` with `{ error, changed, settings }`: `bin/restart` does not exist. The npm package does not include it. Other restart failures return `500` with the same body. In both cases the Gateway already saved the settings. They apply at the next start.
+
+`GET /api/settings/folders` takes an optional `path`. A leading `~` expands to
+the home folder. Without `path`, the listing starts at the saved `folder`, or
+at the home folder. If `path` is not an existing folder, the Gateway lists the
+home folder.
+
+The response is `{ path, parent, home, entries, error? }`. `entries` holds up
+to 500 `{ name, path }` items, sorted by name. It includes symbolic links to
+folders and leaves out names that start with `.`. `parent` is an empty string
+at the root folder. If the Gateway cannot read the folder, it returns `200`
+with empty `entries` and an `error` text.
+
+`GET /api/usage` returns `{ model, currency, priced, session, today, quota }`.
+`model` is the configured DashScope Realtime model, and `currency` is `USD`.
+`session` counts all turns since the Gateway started. `today` counts the turns
+of `model` in the current UTC day. Both hold `textIn`, `audioIn`, `textOut`,
+`audioOut`, `total`, `turns`, `cost`, and `priced`. `cost` is `null` when the
+Gateway has no price for `model`.
+
+`quota` estimates the free token grant for `model`:
+`{ estimate: true, grantTokens, usedTokens, remainingTokens, exhausted, exhaustedOn }`.
+The meter counts only the Realtime turns of this Gateway. It keeps 90 days in
+`usage.json` in the state directory. All owners share one meter.
+
+`GET /api/sessions` returns
+`{ sessions: [{ sessionId, createdAt, updatedAt, messages, title }] }`. It
+reads the session journals of the caller's owner from disk. It lists only
+sessions with at least one user or assistant message, newest `updatedAt`
+first. `title` is the first user message, at most 80 characters long.
+
+`DELETE /api/sessions/:sessionId` deletes the journal folder of that session
+and drops its cached conversation. A client that reconnects with that id gets
+an empty history. The response is `{ removed: true }`, also for an unknown id.
+`removed` is `false` only for a blank id. The route does not close a
+connection that still uses the session.
+
+These routes use the same checks as `/api/health`, `/api/memory`, and
+`/api/input`. A loopback request needs no credential. A remote request needs
+the configured access token or a device credential, as a bearer token or as
+the access cookie. Without one, the Gateway returns `401` with
+`code: "access_required"`. A browser `Origin` that is not allowed returns `403`
+with `{ "error": "origin not allowed" }`. An unexpected failure returns `500`
+from the shared error handler.
+
+A paired remote device can read the settings, but it can save only `voice`,
+`persona`, `listeningMode`, `wakeWord`, `followUpSeconds`, `cameraEnabled`, and
+`roboticVoice`. If a remote `POST /api/settings` contains any other field, the
+Gateway returns `403` with `{ error }` and saves nothing. A remote
+`GET /api/settings/folders` also returns `403`. Like `/api/access/devices`, these
+actions need a loopback request on the Gateway computer. Settings, folders, and
+usage are the same for every owner. The session routes see only the caller's
+owner.
+
 ## Realtime events
 
 `WS /api/realtime?sessionId=<id>` is the public Conversation Client boundary.

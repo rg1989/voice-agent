@@ -32,6 +32,12 @@
 人格、关系定位和表达风格，下一次建立语音会话时生效；也可用
 `QWEN_AUDIO_AGENT_ASSISTANT_PROFILE_PATH` 指向其他文件。
 
+所选音色（`QWEN_OMNI_REALTIME_VOICE` 或 `QWEN_AUDIO_REALTIME_VOICE`）决定语音前台和后台 Agent
+共同使用的人设文件：`ASSISTANT.md` 同目录下的 `personas/<Voice>.md`。Gateway 会把随包模板
+`config/frontend-agent/personas/` 复制到该目录，从不覆盖已有文件。该文件不存在或为空时使用
+`ASSISTANT.md`。WebUI 设置编辑的是当前音色的这个文件。自定义
+`QWEN_AUDIO_AGENT_ASSISTANT_PROFILE_PATH` 或使用 Frontend Profile 时，不再按音色区分人设文件。
+
 `ASSISTANT.md` 不是对话记忆，也不是运行规则。助手不会通过 `memory` 工具修改它；
 写在其中的工具、权限、安全、记忆、任务路由或能力声明不会覆盖 `PROMPT.md`。
 

@@ -1,5 +1,10 @@
 # Install & Update
 
+> **This fork:** the installers, npm package and GitHub URLs on this page install
+> upstream QwenAudio/qwen-audio-agent without this fork's features. To run the
+> fork, follow the source steps in the README of
+> [rg1989/voice-agent](https://github.com/rg1989/voice-agent).
+
 ## Choosing a Version
 
 - **Everyday use**: choose a desktop installer from the

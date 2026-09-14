@@ -198,6 +198,112 @@ await orb.load()
 7.0 WebSocket 命令与 `session.replay`。这些别名不会早于健康契约 `6.0.0` 删除。
 `/api/backend/ui` 等未列出接口仍属内部实现，不承诺稳定。
 
+### WebUI 设置、用量与会话接口
+
+第一方 WebUI 的设置面板、费用显示和会话历史使用下列接口。它们不属于契约：
+没有能力位声明这些接口，任何版本都可能变更。
+
+| 接口 | 用途 |
+| --- | --- |
+| `GET /api/settings` | 当前运行时设置，以及设置面板显示的选项 |
+| `POST /api/settings` | 保存一项或多项设置；返回 `{ changed, restarting, settings }` |
+| `GET /api/settings/folders?path=<folder>` | 为目录选择器列出 Gateway 主机上某个目录的子目录 |
+| `GET /api/usage` | 当前配置的 DashScope Realtime 模型的本地 token 计数与费用估算 |
+| `GET /api/sessions` | 当前 owner 含有消息的会话，最近更新的在前 |
+| `DELETE /api/sessions/:sessionId` | 删除一个会话日志及其缓存的对话；返回 `{ removed }` |
+
+`GET /api/settings` 返回已保存的 `brain`（后台 Agent）、`folder`（其工作目录）、
+`voice`、`persona`、`personaVoice`、`computerUse`、`webTools`、`summaryOnly`、
+`turnThreshold`、`turnSilenceMs`、`listeningMode`、`wakeWord`、`followUpSeconds`、
+`cameraEnabled` 与 `roboticVoice`，以及选项列表 `brains`、`voices`、
+`computerUseOptions`、`listeningModes`、`wakeWords`、`turnDefaults` 与
+`followUpDefaults`。这些值来自配置目录中的 `config.env`。`persona` 是
+`personaVoice` 所指音色的角色文本。
+
+`POST /api/settings` 接收只包含待修改字段的 JSON 对象。Gateway 在写入文件前校验全部字段：
+
+- `brain`：`brains` 中的 id；`omp` 还要求 Gateway 能找到 `omp` 命令。
+- `folder`：已存在的目录。开头的 `~` 展开为 Gateway 进程的主目录；空字符串清除该设置。
+- `voice`：`voices` 中的 id。
+- `persona`：1 到 4000 个字符的文本。
+- `computerUse`：`per_task`、`every_action`、`always` 或 `off`。
+- `listeningMode`：`always` 或 `wake_word`。
+- `wakeWord`：`wakeWords` 中的 id。
+- `turnThreshold`：0 到 1 之间的数字。
+- `turnSilenceMs`：200 到 6000 之间的数字。
+- `followUpSeconds`：0 到 10 之间的数字。
+- `webTools`、`summaryOnly`、`cameraEnabled` 与 `roboticVoice`：布尔值。
+
+超出范围的数字会被限制到范围内，不是数字的值返回 `400`。Gateway 忽略未知字段、
+空的 `brain` 或 `voice`，以及类型不符的文本或布尔字段。响应为
+`{ changed, restarting, settings }`：`changed` 列出本次请求保存的全部字段，
+即使值没有变化；`settings` 与 `GET /api/settings` 的响应结构相同。
+
+| Gateway 重启 | 字段 |
+| --- | --- |
+| 不需要 | `voice`、`persona`、`listeningMode`、`wakeWord`、`followUpSeconds`、`cameraEnabled`、`roboticVoice` |
+| 需要 | `brain`、`folder`、`computerUse`、`webTools`、`summaryOnly`、`turnThreshold`、`turnSilenceMs` |
+
+Gateway 把 `persona` 写入配置目录下的 `personas/<voice>.md`；如果部署设置了自己的
+助手 Profile 路径，则写入该文件。其他字段写入 `config.env`。
+
+`changed` 只包含无需重启的字段时，响应为 `restarting: false`。打开的语音连接立即
+应用聆听方式、唤醒词、续听时长、摄像头与机器音效设置。保存 `voice` 或 `persona`
+后，每个打开的语音会话会向模型重新发送一次指令。服务端不会切换已打开会话的输出音色，
+WebUI 会为此发送 `session.output_voice.update`。不带 `connection.output_voice` 的
+新连接仍使用 Gateway 启动时加载的音色。
+
+`changed` 包含任一需要重启的字段时，Gateway 以分离进程启动 `bin/restart` 辅助脚本，
+响应为 `restarting: true`；即使保存的值与原值相同也会重启。该脚本停止监听 3101
+端口的进程，启动 `node cli/bin/qwenaudio.mjs`，并等待 `/api/health` 可用。重启
+期间已打开的连接会断开。WebUI 轮询 `/api/health`，恢复后刷新页面。
+
+`POST /api/settings` 的错误响应：
+
+- `400` `{ error }`：某个值不合法，例如 `unknown brain: <id>` 或 `no such folder: <path>`。文件写入失败也返回 `400`。
+- `501` `{ error, changed, settings }`：`bin/restart` 不存在；npm 包不包含该脚本。其他重启失败返回相同结构的 `500`。两种情况下设置都已保存，并在下次启动时生效。
+
+`GET /api/settings/folders` 接受可选的 `path`，开头的 `~` 展开为主目录。不传
+`path` 时从已保存的 `folder` 开始，未设置时从主目录开始。`path` 不是已存在的
+目录时，列出主目录。
+
+响应为 `{ path, parent, home, entries, error? }`。`entries` 最多包含 500 个
+`{ name, path }`，按名称排序；包含指向目录的符号链接，不包含以 `.` 开头的名称。
+位于根目录时 `parent` 为空字符串。Gateway 无法读取该目录时仍返回 `200`，
+`entries` 为空并带有 `error` 文本。
+
+`GET /api/usage` 返回 `{ model, currency, priced, session, today, quota }`。
+`model` 是当前配置的 DashScope Realtime 模型，`currency` 为 `USD`。`session` 统计
+Gateway 启动以来的全部轮次，`today` 统计 `model` 在当前 UTC 日期内的轮次；两者都
+包含 `textIn`、`audioIn`、`textOut`、`audioOut`、`total`、`turns`、`cost` 与
+`priced`。Gateway 没有 `model` 的价格时，`cost` 为 `null`。
+
+`quota` 估算 `model` 的免费 token 额度：
+`{ estimate: true, grantTokens, usedTokens, remainingTokens, exhausted, exhaustedOn }`。
+计量只包含本 Gateway 的 Realtime 轮次，保存在状态目录的 `usage.json` 中并保留
+90 天，所有 owner 共用一份。
+
+`GET /api/sessions` 返回
+`{ sessions: [{ sessionId, createdAt, updatedAt, messages, title }] }`。它从磁盘
+读取调用方 owner 的会话日志，只列出至少包含一条用户或助手消息的会话，按
+`updatedAt` 从新到旧排序。`title` 取第一条用户消息，最多 80 个字符。
+
+`DELETE /api/sessions/:sessionId` 删除该会话的日志目录，并清除其缓存的对话；之后
+用同一 id 重连的客户端看到空历史。会话不存在时也返回 `{ removed: true }`，只有
+id 为空白时 `removed` 为 `false`。该接口不会关闭仍在使用该会话的连接。
+
+这些接口与 `/api/health`、`/api/memory`、`/api/input` 经过相同的检查。本机回环
+请求不需要凭据。远程请求需要配置的访问密钥或设备凭据，以 Bearer Token 或访问
+Cookie 携带；缺少时返回 `401` 与 `code: "access_required"`。浏览器 `Origin` 不被
+允许时返回 `403` `{ "error": "origin not allowed" }`。意外错误由共享错误处理返回 `500`。
+
+已配对的远程设备可以读取设置，但只能保存 `voice`、`persona`、`listeningMode`、
+`wakeWord`、`followUpSeconds`、`cameraEnabled` 和 `roboticVoice`。远程的
+`POST /api/settings` 只要包含其他字段，Gateway 就返回 `403` `{ error }`，且不保存任何内容；
+远程的 `GET /api/settings/folders` 同样返回 `403`。与 `/api/access/devices` 一样，这些操作
+需要在 Gateway 所在电脑上通过本机回环请求完成。设置、目录与用量对所有 owner 相同；
+会话接口只访问调用方 owner 的会话。
+
 ## Realtime 事件
 
 `WS /api/realtime?sessionId=<id>` 是公开的对话客户端边界。事件名通过

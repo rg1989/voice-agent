@@ -8,6 +8,45 @@
 [![license](https://img.shields.io/github/license/QwenAudio/qwen-audio-agent)](LICENSE)
 [![WeChat](https://img.shields.io/badge/WeChat-join_chat-07C160?logo=wechat&logoColor=white)](#community)
 
+## About This Fork
+
+This repository is a fork of
+[QwenAudio/qwen-audio-agent](https://github.com/QwenAudio/qwen-audio-agent).
+The npm package `qwen-audio-agent` installs upstream, and the
+[User Guide](https://qwenaudio.github.io/qwen-audio-agent/) documents upstream.
+Neither includes the features below.
+
+Run this fork from source. It needs the Node.js and npm versions listed under
+Installation.
+
+```bash
+git clone https://github.com/rg1989/voice-agent.git
+cd voice-agent
+npm ci                              # also builds the WebUI
+node cli/bin/qwenaudio.mjs config   # creates config.env; fill in DASHSCOPE_API_KEY
+bin/restart                         # starts the Gateway at http://127.0.0.1:3101
+```
+
+Run the Gateway from the clone. The Settings panel restarts it with
+`bin/restart`, which a global install (`npm run install:global`) does not
+include. To set up a computer from an exported setup file, use `bin/setup` as
+described in "Moving to another computer" under Installation.
+
+### What This Fork Adds
+
+- **WebUI Settings panel**: choose the brain (Claude Code, Codex, Oh My Pi or No agent), the working folder, the voice and the options below. Oh My Pi (listed when `omp` is installed) uses the provider and model set in Oh My Pi, for example a Z.AI coding plan subscription.
+- **Header**: a working-folder switcher, session history to open or delete past conversations, and a spend meter that estimates cost from the voice model's token usage.
+- **Wake-word listening in the WebUI**: no microphone audio goes to the voice model until a local detector hears Hey Jarvis, Hey Lisa, Hey Megan, Hey Mycroft or GLaDOS.
+- **Voices with their own personas**: nine Qwen-Omni Realtime voices, each with a persona that the voice and the brain both use. Settings lets you preview a voice and edit its persona. An optional robotic voice filters the reply audio.
+- **Turn-taking tuning**: set how long a pause ends your turn (0.2 to 6 s) and the speech detection threshold.
+- **Research goes to the backend Agent**: the voice hands research and questions it cannot answer to the backend Agent, and its own web search is off by default. An optional setting sends only a one-line summary of each result (the backend's `VOICE:` line) to the voice model.
+- **Computer control with approval**: the Gateway asks before the backend Agent uses your screen, mouse or keyboard, once per task by default. Settings can also ask every time, never ask, or turn computer control off.
+- **One-command setup on another computer**: see "Moving to another computer" under Installation.
+- **Helper scripts**: `bin/brain [claude|codex|omp|none]`, `bin/voice [name]` and `bin/folder [/path/to/project]` set the brain, voice and working folder, then restart the Gateway. Without an argument, they show the current value. `bin/restart` restarts the Gateway.
+
+For WebUI details, see the [WebUI guide](docs/getting-started/webui.md). For
+environment variables, see the [configuration guide](docs/configuration.md).
+
 ## Agent Presence
 
 Real conversation should not leave you waiting after a single sentence, nor
@@ -110,6 +149,9 @@ Requires Node.js 22.22.2+ or 24.15.0+, npm 10+. One-click install (recommended):
 npm install -g qwen-audio-agent
 ```
 
+This command installs upstream qwen-audio-agent without this fork's features.
+To run this fork, install it from source as shown in "About This Fork" above.
+
 For building from source, installing from GitHub, and obtaining a DashScope
 API Key, see the [installation guide](docs/getting-started/install.md).
 
@@ -125,8 +167,8 @@ node bin/setup-bundle.mjs export
 
 This asks for a passphrase and writes an encrypted
 `~/Desktop/voice-agent-setup.qwsetup` with the gateway config (API keys, voice,
-brain, settings), the assistant's persona and memory notes, and Oh My Pi's
-providers, logins and skills. Copy it to the other machine (USB stick, `scp`, or
+brain, settings), the default persona (`ASSISTANT.md`) and memory notes, and
+Oh My Pi's providers, logins and skills. Copy it to the other machine (USB stick, `scp`, or
 a cloud drive with the passphrase sent separately), then run from a clone of
 this repo there:
 
@@ -142,10 +184,11 @@ curl -fsSL https://raw.githubusercontent.com/rg1989/voice-agent/main/bin/setup |
 
 It installs Node, Bun and Oh My Pi for your user (no admin password), builds the
 app, restores the setup file and starts the gateway at http://127.0.0.1:3101.
-On Linux it needs `curl`, `tar` and `unzip` first (`sudo apt install curl unzip`).
-Conversation history and the Claude Code login do not move; run `claude` once if
-you use it as the brain. Computer control needs macOS 14+, or on Linux a desktop
-session with AT-SPI accessibility.
+On Linux, if `curl`, `tar` or `unzip` is missing, it installs them with apt or
+dnf, and sudo asks for your password (the `curl` form above needs `curl` first).
+Conversation history, edits to per-voice personas and the Claude Code login do
+not move; run `claude` once if you use it as the brain. Computer control needs
+macOS 14+, or on Linux a desktop session with AT-SPI accessibility.
 
 ## Quick Start
 

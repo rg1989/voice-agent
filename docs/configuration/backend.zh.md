@@ -142,3 +142,20 @@ OpenClaw 的执行授权同时受 exec approvals、elevated 和执行 host 等�
 无法由一个统一开关安全、完整地表达；选择 `full` 时 Gateway 会明确拒绝启动，
 需要按 OpenClaw 自身方式单独配置。最高权限会放大误操作风险，只应在可信项目和
 可信提示词环境中启用。
+
+<a id="computer-control"></a>
+
+## 电脑控制
+
+能接收 Gateway Session MCP 工具的后台 Agent，可以通过 open-computer-use 在 Gateway 所在主机上截图、
+点击和输入。无论 Agent 自身的权限模型如何，每次调用都要经过 Gateway 的审批关口。
+`QWEN_AUDIO_AGENT_COMPUTER_USE` 决定何时询问：
+
+- `per_task`（默认）：任务第一次需要使用电脑时询问，批准后直到该任务结束都不再询问。
+- `every_action`：每次截图、点击和按键前都询问。
+- `always`：从不询问。只在信任所有任务时使用。
+- `off`：Gateway 不提供电脑控制。
+
+旧写法 `false`、`0`、`no` 和 `disabled` 等同 `off`；`on`、空值和其他任何值都按 `per_task` 处理。
+拒绝后，该任务余下的调用都不会执行。`QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE=full` 不会批准电脑控制。
+可以在 WebUI 设置中修改此项，保存后 Gateway 会重启。
