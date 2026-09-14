@@ -17,7 +17,8 @@ test('客户端没给工作目录时，回落到后台 Agent 的实际工作目�
   // 浏览器没有文件系统，发不出这个字段；PROMPT.md 又要求它缺失时不要猜，
   // 于是前台会说「我看不到当前目录」，哪怕 header 上正显示着它。
   const context = buildFrontendContext({ client: { timeZone: 'UTC', locale: 'en-US' } })
-  assert.match(context, /client_working_directory="\/tmp\/qwaudio-test-workspace"/)
+  // Windows 上工作目录会解析成带盘符的路径（D:\tmp\...）。
+  assert.match(context, /client_working_directory="(?:[A-Za-z]:)?[\\/]+tmp[\\/]+qwaudio-test-workspace"/)
 })
 
 test('客户端自己给了工作目录时以它为准', () => {
