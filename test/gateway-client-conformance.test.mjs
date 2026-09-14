@@ -84,6 +84,10 @@ for (const clientType of Object.values(GatewayReferenceClientType)) {
       clientType === GatewayReferenceClientType.DESKTOP,
     )
     assert.equal(
+      client.supports(GatewayClientCapability.CLIENT_ACTION_SHOW_CONVERSATION),
+      clientType === GatewayReferenceClientType.DESKTOP,
+    )
+    assert.equal(
       client.supports(GatewayClientCapability.INPUT_IMAGE_BUFFER),
       clientType === GatewayReferenceClientType.WEB,
     )

@@ -36,6 +36,12 @@ import {
   wakeWordInstructions,
 } from './tools/features/listening-tools.mjs'
 import {
+  CONTROL_MEDIA_TOOL_NAME,
+  MEDIA_PLAYER_CAPABILITY,
+  mediaToolEntries,
+  PLAY_MEDIA_TOOL_NAME,
+} from './tools/features/media-tools.mjs'
+import {
   NOTES_TOOL_NAME,
   personalToolEntries,
 } from './tools/features/personal-tools.mjs'
@@ -55,14 +61,17 @@ import {
 export {
   BACKEND_INPUT_RESPONSE_CAPABILITY,
   CANCEL_AGENT_TASK_TOOL_NAME,
+  CONTROL_MEDIA_TOOL_NAME,
   ENTER_SLEEP_TOOL_NAME,
   FETCH_URL_TOOL_NAME,
   FRONTEND_RECALL_CAPABILITY,
   GET_AGENT_TASK_STATUS_TOOL_NAME,
   GET_CURRENT_TIME_TOOL_NAME,
   IGNORE_INPUT_TOOL_NAME,
+  MEDIA_PLAYER_CAPABILITY,
   NOTES_TOOL_NAME,
   PERMISSION_RESPONSE_CAPABILITY,
+  PLAY_MEDIA_TOOL_NAME,
   RECALL_TOOL_NAME,
   RESPOND_AGENT_INPUT_TOOL_NAME,
   RESPOND_PERMISSION_TOOL_NAME,
@@ -80,6 +89,7 @@ const featureEntries = [
   ...retrievalToolEntries,
   ...clientToolEntries,
   ...listeningToolEntries,
+  ...mediaToolEntries,
   ...optionalFrontendFeatures.flatMap(feature => feature.entries),
 ]
 const entriesByName = new Map(featureEntries.map(entry => [
@@ -101,6 +111,8 @@ const toolOrder = [
   WEB_SEARCH_TOOL_NAME,
   FETCH_URL_TOOL_NAME,
   ENTER_SLEEP_TOOL_NAME,
+  PLAY_MEDIA_TOOL_NAME,
+  CONTROL_MEDIA_TOOL_NAME,
   ...optionalFrontendFeatures.flatMap(feature => (
     feature.entries.map(entry => entry.definition.function.name)
   )),

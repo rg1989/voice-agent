@@ -2,8 +2,15 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   LiveSettings,
+  MEDIA_BROWSER_IDS,
   liveSettingsFromEnvironment,
 } from '../src/core/live-settings.mjs'
+
+const MEDIA_DEFAULTS = {
+  mediaBrowser: 'auto',
+  mediaReturnToAssistant: false,
+  mediaPauseWhileTalking: true,
+}
 
 test('live settings default to always listening with the camera off', () => {
   assert.deepEqual(liveSettingsFromEnvironment({}), {
@@ -12,6 +19,7 @@ test('live settings default to always listening with the camera off', () => {
     followUpSeconds: 5,
     cameraEnabled: false,
     roboticVoice: false,
+    ...MEDIA_DEFAULTS,
   })
 })
 
@@ -28,6 +36,7 @@ test('live settings parse config.env values and fall back per invalid field', ()
     followUpSeconds: 10,
     cameraEnabled: true,
     roboticVoice: true,
+    ...MEDIA_DEFAULTS,
   })
 })
 
@@ -43,6 +52,7 @@ test('the store seeds from config and emits change only when a value changes', (
     followUpSeconds: 8,
     cameraEnabled: false,
     roboticVoice: false,
+    ...MEDIA_DEFAULTS,
   })
   const events = []
   store.on('change', (next, previous, changed) => events.push({ next, previous, changed }))
@@ -57,4 +67,49 @@ test('the store seeds from config and emits change only when a value changes', (
   // Whole seconds only.
   assert.deepEqual(store.update({ followUpSeconds: 6.6 }), ['followUpSeconds'])
   assert.equal(store.get().followUpSeconds, 7)
+})
+
+test('media browsers are the Chromium family plus auto', () => {
+  assert.deepEqual(MEDIA_BROWSER_IDS, ['auto', 'chrome', 'edge', 'chromium', 'brave'])
+})
+
+test('media settings parse from config.env and fall back per field', () => {
+  assert.deepEqual(liveSettingsFromEnvironment({
+    QWEN_AUDIO_MEDIA_BROWSER: 'Brave',
+    QWEN_AUDIO_MEDIA_RETURN_TO_ASSISTANT: 'yes',
+    QWEN_AUDIO_MEDIA_PAUSE_WHILE_TALKING: 'off',
+  }), {
+    listeningMode: 'always',
+    wakeWord: 'hey_jarvis',
+    followUpSeconds: 5,
+    cameraEnabled: false,
+    roboticVoice: false,
+    mediaBrowser: 'brave',
+    mediaReturnToAssistant: true,
+    mediaPauseWhileTalking: false,
+  })
+  const fallback = liveSettingsFromEnvironment({
+    QWEN_AUDIO_MEDIA_BROWSER: 'safari',
+    QWEN_AUDIO_MEDIA_RETURN_TO_ASSISTANT: 'maybe',
+    QWEN_AUDIO_MEDIA_PAUSE_WHILE_TALKING: '',
+  })
+  assert.equal(fallback.mediaBrowser, 'auto')
+  assert.equal(fallback.mediaReturnToAssistant, false)
+  // Pause while talking is on unless config.env turns it off.
+  assert.equal(fallback.mediaPauseWhileTalking, true)
+})
+
+test('media settings update live and keep the current value on invalid input', () => {
+  const store = new LiveSettings({})
+  const events = []
+  store.on('change', (next, previous, changed) => events.push(changed))
+  assert.deepEqual(store.update({
+    mediaBrowser: 'edge',
+    mediaReturnToAssistant: true,
+    mediaPauseWhileTalking: false,
+  }), ['mediaBrowser', 'mediaReturnToAssistant', 'mediaPauseWhileTalking'])
+  assert.deepEqual(store.update({ mediaBrowser: 'firefox', mediaPauseWhileTalking: 'no' }), [])
+  assert.equal(store.get().mediaBrowser, 'edge')
+  assert.equal(store.get().mediaPauseWhileTalking, false)
+  assert.equal(events.length, 1)
 })

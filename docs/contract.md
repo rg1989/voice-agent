@@ -241,10 +241,11 @@ them, and they can change in any release.
 `GET /api/settings` returns the saved values `brain` (the backend agent),
 `folder` (its working folder), `voice`, `persona`, `personaVoice`,
 `computerUse`, `webTools`, `summaryOnly`, `turnThreshold`, `turnSilenceMs`,
-`listeningMode`, `wakeWord`, `followUpSeconds`, `cameraEnabled`, and
-`roboticVoice`. It also returns the option lists `brains`, `voices`,
-`computerUseOptions`, `listeningModes`, `wakeWords`, `turnDefaults`, and
-`followUpDefaults`. The values come from `config.env` in the config directory.
+`listeningMode`, `wakeWord`, `followUpSeconds`, `cameraEnabled`,
+`roboticVoice`, `mediaBrowser`, `mediaReturnToAssistant`, and
+`mediaPauseWhileTalking`. It also returns the option lists `brains`, `voices`,
+`computerUseOptions`, `listeningModes`, `wakeWords`, `turnDefaults`,
+`followUpDefaults`, and `mediaBrowserOptions` (each browser with `installed`). The values come from `config.env` in the config directory.
 `persona` is the character text of the voice that `personaVoice` names.
 
 `POST /api/settings` takes a JSON object with only the fields to change. The
@@ -260,7 +261,8 @@ Gateway checks every field before it writes a file:
 - `turnThreshold`: a number from 0 to 1.
 - `turnSilenceMs`: a number from 200 to 6000.
 - `followUpSeconds`: a number from 0 to 10.
-- `webTools`, `summaryOnly`, `cameraEnabled`, and `roboticVoice`: booleans.
+- `mediaBrowser`: `auto`, `chrome`, `edge`, `chromium`, or `brave`.
+- `webTools`, `summaryOnly`, `cameraEnabled`, `roboticVoice`, `mediaReturnToAssistant`, and `mediaPauseWhileTalking`: booleans.
 
 The Gateway clamps a number that is outside its range. A value that is not a
 number returns `400`. The Gateway ignores unknown fields, an empty `brain` or
@@ -271,7 +273,7 @@ the `GET /api/settings` response.
 
 | Gateway restart | Fields |
 | --- | --- |
-| Not needed | `voice`, `persona`, `listeningMode`, `wakeWord`, `followUpSeconds`, `cameraEnabled`, `roboticVoice` |
+| Not needed | `voice`, `persona`, `listeningMode`, `wakeWord`, `followUpSeconds`, `cameraEnabled`, `roboticVoice`, `mediaBrowser`, `mediaReturnToAssistant`, `mediaPauseWhileTalking` |
 | Needed | `brain`, `folder`, `computerUse`, `webTools`, `summaryOnly`, `turnThreshold`, `turnSilenceMs` |
 
 The Gateway writes `persona` to `personas/<voice>.md` in the config directory.

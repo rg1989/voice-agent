@@ -10,6 +10,7 @@ export const ClientActionName = GatewayClientActionName
 
 const ACTION_CAPABILITIES = Object.freeze({
   [ClientActionName.ENTER_SLEEP]: GatewayClientCapability.CLIENT_ACTION_ENTER_SLEEP,
+  [ClientActionName.SHOW_CONVERSATION]: GatewayClientCapability.CLIENT_ACTION_SHOW_CONVERSATION,
 })
 
 export function clientActionCapability(name) {

@@ -60,7 +60,9 @@ import {
   desktopSurfaceLayout,
 } from './desktop-surface-layout.mjs'
 import { createOrbPlacement } from './orb-placement.mjs'
+import { desktopWindowTitle } from './desktop-window-title.mjs'
 import { bindOrbShell, configureOrbWindow } from './orb-shell.mjs'
+import { applyOrbWindowLevel } from './orb-window-level.mjs'
 import { createSettingsStore } from './settings-store.mjs'
 import { desktopClientPaths } from './client-paths.mjs'
 import { createDesktopBackendManagement } from './backend/management.mjs'
@@ -184,6 +186,8 @@ let rendererServer = null
 let desktopTaskCount = 0
 let desktopTaskPlacement = 'below'
 let desktopOrbOffsetX = 0
+let desktopCaptionVisible = false
+let desktopMediaActive = false
 let desktopSurfaceMode = 'orb'
 let reconnectTimer = null
 let embeddedGateway = null
@@ -615,6 +619,9 @@ function createWindow() {
     if (isSafeExternalUrl(url)) void shell.openExternal(url)
   })
   window.once('ready-to-show', () => window.show())
+  // main owns the title (desktopWindowTitle). Without this, a page load or a
+  // reconnect reload resets it to the <title> of web/index.html.
+  window.on('page-title-updated', event => event.preventDefault())
   window.on('blur', () => {
     orbShell.cancelDrag()
   })
@@ -626,6 +633,8 @@ function createWindow() {
       desktopTaskCount = 0
       desktopTaskPlacement = 'below'
       desktopOrbOffsetX = 0
+      desktopCaptionVisible = false
+      desktopMediaActive = false
       desktopSurfaceMode = 'orb'
     }
   })
@@ -697,7 +706,12 @@ const orbShell = bindOrbShell({
   onLoadSurface: () => desktopSurfaceMode,
   onSetSurface: mode => {
     const selected = setDesktopSurfaceMode(mode)
-    if (selected === 'panel') desktopPresence.wake('panel')
+    if (selected === 'panel') {
+      desktopPresence.wake('panel')
+      // The app is a macOS accessory (LSUIElement). window.focus() alone does
+      // not take focus from another app, such as the media player browser.
+      if (process.platform === 'darwin') app.focus({ steal: true })
+    }
     return selected
   },
   onSetConversationSession: sessionId => {
@@ -728,9 +742,13 @@ function setDesktopSurfaceMode(requestedMode) {
   if (mode === desktopSurfaceMode) return mode
 
   const bounds = mainWindow.getBounds()
+  // Set before show(): a hidden orb that maps again as the panel must already
+  // carry the panel title when Hyprland evaluates its window rules.
+  mainWindow.setTitle(desktopWindowTitle(mode))
   if (mode === 'panel') {
     const orbBounds = desktopOrbBounds(bounds, {
       taskCount: desktopTaskCount,
+      caption: desktopCaptionVisible,
       placement: desktopTaskPlacement,
       orbOffsetX: desktopOrbOffsetX,
     })
@@ -756,11 +774,13 @@ function setDesktopSurfaceMode(requestedMode) {
   mainWindow.setSkipTaskbar(true)
   mainWindow.setHasShadow(false)
   configureOrbWindow(mainWindow)
+  applyOrbWindowLevel(mainWindow, { mediaActive: desktopMediaActive })
   orbPlacement.recordPosition(orbAnchor)
   const layout = desktopSurfaceLayout({
     bounds: orbAnchor,
     currentTaskCount: 0,
     taskCount: desktopTaskCount,
+    caption: desktopCaptionVisible,
     placement: desktopTaskPlacement,
     workArea,
   })
@@ -771,16 +791,21 @@ function setDesktopSurfaceMode(requestedMode) {
   return desktopSurfaceMode
 }
 
-function updateDesktopTaskSurface(value) {
+function updateDesktopTaskSurface(value, captionValue = desktopCaptionVisible) {
   if (!mainWindow || mainWindow.isDestroyed()) return
   const taskCount = Math.min(100, Math.max(0, Math.floor(Number(value) || 0)))
+  const caption = captionValue === true
   if (desktopSurfaceMode === 'panel') {
     desktopTaskCount = taskCount
+    desktopCaptionVisible = caption
     return
   }
   const bounds = mainWindow.getBounds()
+  // Rebuild the orb rectangle from the state that produced these bounds, not
+  // from the requested state, or the orb jumps when the surface changes.
   const orbBounds = desktopOrbBounds(bounds, {
     taskCount: desktopTaskCount,
+    caption: desktopCaptionVisible,
     placement: desktopTaskPlacement,
     orbOffsetX: desktopOrbOffsetX,
   })
@@ -788,12 +813,15 @@ function updateDesktopTaskSurface(value) {
   const layout = desktopSurfaceLayout({
     bounds,
     currentTaskCount: desktopTaskCount,
+    currentCaption: desktopCaptionVisible,
     taskCount,
+    caption,
     placement: desktopTaskPlacement,
     orbOffsetX: desktopOrbOffsetX,
     workArea,
   })
   desktopTaskCount = taskCount
+  desktopCaptionVisible = caption
   desktopTaskPlacement = layout.placement
   desktopOrbOffsetX = layout.orbOffsetX
   sendDesktopTaskPlacement()
@@ -813,6 +841,20 @@ function updateDesktopTaskSurface(value) {
 ipcMain.on('qwen-audio-agent:task-card-count', (event, value) => {
   if (!mainWindow || event.sender !== mainWindow.webContents) return
   updateDesktopTaskSurface(value)
+})
+
+ipcMain.on('qwen-audio-agent:caption-visible', (event, value) => {
+  if (!mainWindow || event.sender !== mainWindow.webContents) return
+  updateDesktopTaskSurface(desktopTaskCount, value === true)
+})
+
+ipcMain.on('qwen-audio-agent:media-active', (event, value) => {
+  if (!mainWindow || event.sender !== mainWindow.webContents) return
+  desktopMediaActive = value === true
+  // The panel is a normal window. The orb level returns with the orb surface.
+  if (desktopSurfaceMode === 'orb') {
+    applyOrbWindowLevel(mainWindow, { mediaActive: desktopMediaActive })
+  }
 })
 
 ipcMain.handle('qwen-audio-agent:wake-shortcut-pause', event => {

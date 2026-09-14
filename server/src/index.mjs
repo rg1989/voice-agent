@@ -3,7 +3,10 @@ import { once } from 'node:events'
 import { fileURLToPath } from 'node:url'
 import { loadRuntimeEnvironment } from '../../shared/runtime-environment.mjs'
 import { expandProcessPath } from '../../shared/process-path.mjs'
-import { ensureBackendSkills } from '../../shared/skill-library.mjs'
+import {
+  ensureBackendSkills,
+  ensureBundledSkills,
+} from '../../shared/skill-library.mjs'
 import { createLogger } from '../../shared/logger.mjs'
 import { acquireGatewayLease } from '../../shared/gateway/lease.mjs'
 import { assertGatewaySetup } from '../../shared/gateway/setup.mjs'
@@ -28,6 +31,7 @@ let exitTimer
 let gatewayLease
 let gatewayHeartbeat
 let closeGatewayApplication
+let gatewayServices
 
 function stop(signal = 'SIGTERM') {
   if (stopPromise) return stopPromise
@@ -83,6 +87,23 @@ try {
     // 离线等失败不阻塞语音网关启动；技能可下次启动再补。
     logger.warn('skills.backfill_failed', { error })
   }
+  // Skills that ship with this repository (skills/, for example
+  // media-playback). Read from sourceRoot, which is inside app.asar in the
+  // desktop app, and copied before the backend first scans its skills.
+  try {
+    const bundled = ensureBundledSkills({
+      root: sourceRoot,
+      protocol: process.env.AGENT_PROTOCOL,
+    })
+    if (bundled.installed.length) {
+      logger.info('skills.bundled_installed', { installed: bundled.installed })
+    }
+    for (const path of bundled.skipped) {
+      logger.info('skills.bundled_skipped', { path, reason: 'user-owned folder' })
+    }
+  } catch (error) {
+    logger.warn('skills.bundled_failed', { error })
+  }
   backendRuntime = await startManagedBackend({ root, logger })
   const managedBackend = backendRuntime.child
   const onManagedBackendExit = (code, signal) => {
@@ -114,6 +135,9 @@ try {
   }
   process.once('exit', () => {
     clearInterval(gatewayHeartbeat)
+    // The exit timer can fire before close() has stopped the player; the
+    // browser must not outlive the gateway. The signal is sent synchronously.
+    gatewayServices?.mediaPlayer?.killNow?.()
     backendRuntime?.close()
     agentClient?.close()
     gatewayLease?.release()
@@ -121,6 +145,7 @@ try {
   const gatewayApplication = await import('./app/bootstrap.mjs')
   const { server } = gatewayApplication
   closeGatewayApplication = gatewayApplication.close
+  gatewayServices = gatewayApplication.services
   if (!server.listening) await once(server, 'listening')
   const address = server.address()
   const port = address && typeof address === 'object'

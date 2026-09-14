@@ -360,6 +360,13 @@ client.action.result
 Event 兜底、超时和重复请求共用一个 Presence 状态机。旧 `client.state` sleeping
 消息仍作为当前 Client 的迁移兼容入口，但不再承担实际执行边界。
 
+`show_conversation`（capability `client.actions.show_conversation`）请求桌面
+Client 打开对话面板并置于最前。Gateway 的媒体播放器因用户停止、播放结束或窗口被
+关闭而停止，且设置 `mediaReturnToAssistant` 开启时，Gateway 向持有语音的支持方
+Client 发送该 Action（没有 Client 持有语音时，发给所有支持它的 Client），输出为
+`{ "mode": "panel" }`。Gateway 还会在 Client 连接时，以及播放开始、暂停、继续或
+停止时，向每个 Client 发送 `media.state` 事件 `{ active, title, service }`。
+
 Client Action 不替代 MCP、OpenAPI、ACP 或 A2A。它只用于当前 Client Environment 自己拥有的能力；其他外部系统继续使用适合的工具或 Backend Adapter。
 
 ### 5.4 运行时命令与查询

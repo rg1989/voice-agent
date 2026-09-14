@@ -1,0 +1,56 @@
+#!/bin/bash
+# Open the desktop app on the gateway that bin/restart runs, and start that gateway
+# first when it is not up. bin/setup, the app launcher entry and login autostart
+# all open the app this way, so the app never needs a gateway of its own.
+#
+#   bin/desktop [qwaudio://pairing-link]
+set -eu
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
+
+# Login autostart has a bare PATH (launchd gives /usr/bin:/bin:/usr/sbin:/sbin), but
+# bin/restart needs Node, which can come from Homebrew, mise or bin/setup. Take the
+# login shell's PATH first. PATH is printed on its own last line, after anything the
+# profile prints.
+# shellcheck disable=SC2016
+login_path="$("${SHELL:-/bin/bash}" -lc 'printf "\n%s" "$PATH"' </dev/null 2>/dev/null | tail -n 1 || true)"
+if [ -n "$login_path" ]; then PATH="$login_path:$PATH"; fi
+# The folders bin/setup and mise install into go in front.
+for dir in "$HOME/.local/bin" "$HOME/.bun/bin" "$HOME/.local/node/bin" "$HOME/.local/share/mise/shims"; do
+  case ":$PATH:" in
+    *":$dir:"*) ;;
+    *) if [ -d "$dir" ]; then PATH="$dir:$PATH"; fi ;;
+  esac
+done
+# Homebrew goes last: it only fills in what is still missing.
+for dir in /opt/homebrew/bin /usr/local/bin; do
+  case ":$PATH:" in
+    *":$dir:"*) ;;
+    *) if [ -d "$dir" ]; then PATH="$PATH:$dir"; fi ;;
+  esac
+done
+export PATH
+
+# Setup writes the shared state folder into config.env. A config.env made later
+# (qwenaudio config) has none, and the app would then keep a gateway lease of its own.
+config="${QWAUDIO_CONFIG_DIR:-$HOME/.config/qwaudio}/config.env"
+if [ -f "$config" ] && ! grep -q '^QWAUDIO_STATE_DIR=' "$config"; then
+  printf '\nQWAUDIO_STATE_DIR=%s\n' "$(dirname "$config")/state" >> "$config"
+fi
+
+# The app opens even when the gateway cannot start; its Settings show why.
+health="$(curl -s -m 1 http://127.0.0.1:3101/api/health 2>/dev/null || true)"
+case "$health" in
+  *'"ok"'*) ;;
+  *)
+    if command -v node >/dev/null 2>&1; then
+      bash "$REPO/bin/restart" || true
+    else
+      echo "bin/desktop: node not found on PATH; the app will start its own gateway" >&2
+    fi
+    ;;
+esac
+
+if [ "$(uname -s)" = Darwin ]; then
+  exec open -a "$HOME/Applications/Qwen Audio Agent.app" --args "$@"
+fi
+exec "$HOME/.local/opt/qwen-audio-agent/qwen-audio-agent" "$@"

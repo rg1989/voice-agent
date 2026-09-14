@@ -19,6 +19,7 @@ import TaskArtifacts from './TaskArtifacts.jsx'
 import PermissionActions from './PermissionActions.jsx'
 import DesktopFluidOrb from './desktop/DesktopFluidOrb.jsx'
 import DesktopSpriteOrb from './desktop/DesktopSpriteOrb.jsx'
+import DesktopCaption from './desktop/DesktopCaption.jsx'
 import KnowledgeLibraryPanel from './KnowledgeLibraryPanel.jsx'
 import SettingsPanel from './SettingsPanel.jsx'
 import SessionHistory from './SessionHistory.jsx'
@@ -59,11 +60,19 @@ import {
   desktopTasksActive,
   desktopWorkSettled,
   desktopTasksWorking,
+  mediaOnScreen,
   performDesktopClientAction,
 } from './desktop/desktop-hide.js'
 import {
   desktopTaskCards,
 } from './desktop/desktop-task-cards.js'
+import {
+  DESKTOP_CAPTION_HIDDEN,
+  desktopCaption,
+  desktopCaptionDelay,
+  expireDesktopCaption,
+  nextDesktopCaption,
+} from './desktop/desktop-caption.js'
 import {
   advanceDesktopRuntimePresentation,
   desktopBackendRuntime,
@@ -258,6 +267,8 @@ export default function App() {
   const [desktopSurfaceMode, setDesktopSurfaceMode] = useState(
     initialDesktopSurfaceMode,
   )
+  const [orbCaption, setOrbCaption] = useState(DESKTOP_CAPTION_HIDDEN)
+  const [mediaActive, setMediaActive] = useState(false)
   const [lastInteractionAt, setLastInteractionAt] = useState(Date.now)
   const activeVoiceResponse = useRef('')
   const currentTurnId = useRef('')
@@ -274,6 +285,8 @@ export default function App() {
   const autoHideStateRef = useRef(null)
   const autoHideRequestedDeadlineRef = useRef(0)
   const lastWakeAtRef = useRef(0)
+  // onRealtimeEvent is created once, so it reads the media state from a ref.
+  const mediaActiveRef = useRef(false)
   const previousDesktopLifecycle = useRef('active')
   const gatewayCommandsRef = useRef(null)
   const listeningStateRef = useRef('always')
@@ -533,6 +546,7 @@ export default function App() {
       bridge: window.qwenAudioAgentDesktop,
       onLifecycle: setDesktopLifecycle,
       lastWakeAt: lastWakeAtRef.current,
+      mediaActive: mediaActiveRef.current,
     }).catch(() => {})
     if (
       event.type === 'voice.sleep'
@@ -609,6 +623,16 @@ export default function App() {
         void gatewayCommandsRef.current?.playChime?.()
       }
       listeningStateRef.current = event.state || listeningStateRef.current
+    }
+    if (event.type === 'media.state') {
+      // Only a video on screen keeps the orb shown and raised; Spotify audio
+      // does not (mediaOnScreen).
+      const active = mediaOnScreen(event)
+      // Playback counts as work: when it stops, the hide timer starts again,
+      // so an orb left alone during a long video does not vanish at once.
+      if (mediaActiveRef.current && !active) workSettledAtRef.current = Date.now()
+      mediaActiveRef.current = active
+      setMediaActive(active)
     }
     if (event.type === 'transcript.delta' && event.role === 'user') {
       updateUserTranscript(event)
@@ -866,6 +890,7 @@ export default function App() {
       desktop: desktopOrbMode,
       bridge: window.qwenAudioAgentDesktop,
       onLifecycle: setDesktopLifecycle,
+      onSurface: setDesktopSurfaceMode,
     }),
     onWakeWordAudio: (audio, sampleRate) => {
       window.qwenAudioAgentDesktop?.acceptWakeWordAudio(audio, sampleRate)
@@ -965,6 +990,53 @@ export default function App() {
     if (!desktopOrbMode) return undefined
     return () => window.qwenAudioAgentDesktop?.setTaskCardCount(0)
   }, [])
+
+  const orbCaptionSource = useMemo(
+    () => desktopCaption({ messages, visualState: orbVisualState }),
+    [messages, orbVisualState],
+  )
+  const orbCaptionAvailable = (
+    desktopOrbMode
+    && desktopSurfaceMode === 'orb'
+    && desktopLifecycle === 'active'
+  )
+  useEffect(() => {
+    setOrbCaption(current => nextDesktopCaption(current, {
+      available: orbCaptionAvailable,
+      status: orbCaptionSource.status,
+      text: orbCaptionSource.text,
+    }))
+  }, [orbCaptionAvailable, orbCaptionSource])
+
+  useEffect(() => {
+    const phase = orbCaption.phase
+    const delay = desktopCaptionDelay(phase)
+    if (delay === null) return undefined
+    const timer = setTimeout(() => {
+      setOrbCaption(current => expireDesktopCaption(current, phase))
+    }, delay)
+    return () => clearTimeout(timer)
+  }, [orbCaption.phase])
+
+  // The window grows when the caption mounts and shrinks only after the fade,
+  // so the bubble is never cut off halfway through it.
+  const orbCaptionMounted = orbCaption.phase !== 'hidden'
+  useEffect(() => {
+    if (!desktopOrbMode) return undefined
+    window.qwenAudioAgentDesktop?.setCaptionVisible?.(orbCaptionMounted)
+    return undefined
+  }, [orbCaptionMounted])
+
+  useEffect(() => {
+    if (!desktopOrbMode) return undefined
+    return () => window.qwenAudioAgentDesktop?.setCaptionVisible?.(false)
+  }, [])
+
+  useEffect(() => {
+    if (!desktopOrbMode) return undefined
+    window.qwenAudioAgentDesktop?.setMediaActive?.(mediaActive)
+    return undefined
+  }, [mediaActive])
   const ownershipLabel = voice.ownership.holder
     ? frontendLabel(voice.ownership.holder)
     : ''
@@ -1051,6 +1123,7 @@ export default function App() {
     desktopLifecycle,
     desktopSurfaceMode,
     lastInteractionAt,
+    mediaActive,
     connectionState: voice.connectionState,
     visualError: voice.visualError,
     workSettled,
@@ -1066,6 +1139,7 @@ export default function App() {
         connectionState: current.connectionState,
         visualError: current.visualError,
         lifecycle: current.desktopLifecycle,
+        mediaActive: current.mediaActive,
       })) return
       const deadline = desktopHideDeadline({
         lastInteractionAt: current.lastInteractionAt,
@@ -1182,7 +1256,9 @@ export default function App() {
   if (desktopOrbMode && desktopSurfaceMode === 'orb') {
     return <main className={`desktop-gallery-shell${
       desktopCards.length && !desktopTasksCollapsed ? ' has-task-cards' : ''
-    }${desktopTaskLayout.placement === 'above' ? ' tasks-above' : ''}`}
+    }${orbCaptionMounted ? ' has-caption' : ''}${
+      desktopTaskLayout.placement === 'above' ? ' tasks-above' : ''
+    }`}
     style={{ '--desktop-orb-offset-x': `${desktopTaskLayout.orbOffsetX}px` }}>
       <div className="desktop-orb-anchor">
         <section
@@ -1299,6 +1375,11 @@ export default function App() {
         </nav>
         </section>
       </div>
+      {orbCaptionMounted && <DesktopCaption
+        status={orbCaption.status}
+        text={orbCaption.text}
+        fading={orbCaption.phase === 'fading'}
+      />}
       {desktopCards.length > 0 && !desktopTasksCollapsed && <section
         className="desktop-task-stack"
         aria-label={t('后台任务')}

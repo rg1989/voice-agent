@@ -27,6 +27,9 @@ function harness({
   frontendKnowledge,
   frontendToolSources,
   disabledTools,
+  mediaPlayer,
+  resolveMedia,
+  mediaTalkPause,
   getTurnId = () => 'turn-one',
   getTurnGeneration = () => 1,
 } = {}) {
@@ -70,6 +73,9 @@ function harness({
     frontendKnowledge,
     frontendToolSources,
     disabledTools,
+    mediaPlayer,
+    resolveMedia,
+    mediaTalkPause,
     onToolResultReady: fields => toolResultsReady.push(fields),
     onToolCallDebug,
   })
@@ -2507,4 +2513,175 @@ test('consent to computer control has to name the request it answers', async () 
   })
   assert.deepEqual(calls, [['auth-screen', 'once']])
   await kit.finish()
+})
+
+function fakeMediaPlayer({ controlError = null } = {}) {
+  const calls = []
+  return {
+    calls,
+    play: async options => {
+      calls.push(['play', options])
+      return { status: 'playing', title: options.title, url: options.url, service: options.service, browser: 'edge' }
+    },
+    stop: async options => {
+      calls.push(['stop', options])
+      return { status: 'stopped' }
+    },
+    control: async (action, options) => {
+      calls.push(['control', action, options])
+      if (controlError) throw controlError
+      return { status: 'ok', action }
+    },
+  }
+}
+
+const mediaCall = (callId, name, args, extra = {}) => ({
+  call_id: callId,
+  name,
+  arguments: JSON.stringify(args),
+  ...extra,
+})
+const turn = { turnId: 'turn-one', turnGeneration: 1 }
+
+test('play_media resolves the words, plays the result and lets the voice say the title', async () => {
+  const searches = []
+  const mediaPlayer = fakeMediaPlayer()
+  const kit = harness({
+    mediaPlayer,
+    resolveMedia: async (query, options) => {
+      searches.push([query, options])
+      return {
+        url: 'https://music.youtube.com/watch?v=fJ9rUzIMcZQ',
+        title: 'Bohemian Rhapsody',
+        channel: 'Queen',
+        videoId: 'fJ9rUzIMcZQ',
+      }
+    },
+  })
+  await kit.handler.handle(
+    mediaCall('call-play', 'play_media', { query: 'bohemian rhapsody', service: 'youtube_music' }),
+    turn,
+  )
+  assert.deepEqual(searches, [['bohemian rhapsody', { service: 'youtube_music' }]])
+  assert.deepEqual(mediaPlayer.calls, [['play', {
+    url: 'https://music.youtube.com/watch?v=fJ9rUzIMcZQ',
+    title: 'Bohemian Rhapsody',
+    service: 'youtube_music',
+  }]])
+  assert.deepEqual(kit.outputs[0][1], {
+    status: 'playing',
+    title: 'Bohemian Rhapsody',
+    channel: 'Queen',
+    service: 'youtube_music',
+  })
+  assert.notEqual(kit.outputs[0][3].createResponse, false)
+})
+
+test('play_media tells the voice when nothing was found', async () => {
+  const mediaPlayer = fakeMediaPlayer()
+  const kit = harness({
+    mediaPlayer,
+    resolveMedia: async () => {
+      throw Object.assign(new Error('nothing found for zzzz'), { code: 'not_found' })
+    },
+  })
+  await kit.handler.handle(mediaCall('call-miss', 'play_media', { query: 'zzzz', service: 'youtube' }), turn)
+  assert.deepEqual(mediaPlayer.calls, [])
+  assert.equal(kit.outputs[0][1].error_code, 'not_found')
+  assert.equal(kit.outputs[0][1].user_message, 'Nothing matched that search.')
+  assert.equal(kit.outputs[0][3].createResponse, true)
+})
+
+test('control_media runs silently and turns seek into a relative seek', async () => {
+  const mediaPlayer = fakeMediaPlayer()
+  const kit = harness({ mediaPlayer })
+  for (const [callId, args] of [
+    ['call-pause', { action: 'pause' }],
+    ['call-seek', { action: 'seek', seconds: -30 }],
+    ['call-stop', { action: 'stop' }],
+  ]) {
+    await kit.handler.handle(mediaCall(callId, 'control_media', args, { response_id: 'resp-control' }), turn)
+  }
+  assert.deepEqual(mediaPlayer.calls, [
+    ['control', 'pause', {}],
+    ['control', 'seek_relative', { seconds: -30 }],
+    ['stop', { reason: 'user' }],
+  ])
+  assert.deepEqual(kit.outputs.map(output => [output[1], output[3].createResponse]), [
+    [{ status: 'ok', action: 'pause' }, false],
+    [{ status: 'ok', action: 'seek' }, false],
+    [{ status: 'ok', action: 'stop' }, false],
+  ])
+  assert.equal(kit.handler.consumeTerminalToolResponse('resp-control'), true)
+  assert.deepEqual(kit.ensuredResponses, [])
+})
+
+test('control_media speaks up when nothing plays or the request is incomplete', async () => {
+  const mediaPlayer = fakeMediaPlayer({
+    controlError: Object.assign(new Error('nothing is playing'), { code: 'not_playing' }),
+  })
+  const kit = harness({ mediaPlayer })
+  await kit.handler.handle(mediaCall('call-1', 'control_media', { action: 'pause' }), turn)
+  await kit.handler.handle(mediaCall('call-2', 'control_media', { action: 'seek' }), turn)
+  await kit.handler.handle(mediaCall('call-3', 'control_media', { action: 'rewind' }), turn)
+  assert.deepEqual(kit.outputs.map(output => [output[1].error_code, output[3].createResponse]), [
+    ['not_playing', true],
+    ['invalid_arguments', true],
+    ['invalid_arguments', true],
+  ])
+  assert.deepEqual(mediaPlayer.calls, [['control', 'pause', {}]])
+})
+
+test('play_media logs an uncoded error and speaks media_failed', async t => {
+  const warn = t.mock.method(console, 'warn', () => {})
+  const kit = harness({
+    mediaPlayer: fakeMediaPlayer(),
+    resolveMedia: async () => { throw new TypeError('found.url is undefined') },
+  })
+  await kit.handler.handle(mediaCall('call-bug', 'play_media', { query: 'x', service: 'youtube' }), turn)
+  assert.equal(kit.outputs[0][1].error_code, 'media_failed')
+  assert.equal(kit.outputs[0][1].user_message, 'Playback failed.')
+  assert.equal(warn.mock.callCount(), 1)
+  const logged = warn.mock.calls[0].arguments[0]
+  assert.match(logged, /^play_media failed: no code: found\.url is undefined\n/)
+  assert.match(logged, /TypeError: found\.url is undefined\n\s+at /)
+})
+
+test('control_media logs the message of a coded media error', async t => {
+  const warn = t.mock.method(console, 'warn', () => {})
+  const mediaPlayer = fakeMediaPlayer({
+    controlError: Object.assign(new Error('DevTools page target is gone'), { code: 'transport_unavailable' }),
+  })
+  const kit = harness({ mediaPlayer })
+  await kit.handler.handle(mediaCall('call-gone', 'control_media', { action: 'pause' }), turn)
+  assert.equal(kit.outputs[0][1].error_code, 'transport_unavailable')
+  assert.equal(kit.outputs[0][1].user_message, 'The player cannot be controlled right now.')
+  assert.deepEqual(warn.mock.calls.map(call => call.arguments), [
+    ['control_media failed: transport_unavailable: DevTools page target is gone'],
+  ])
+})
+
+test('media tools are unavailable without a media player', async () => {
+  const kit = harness()
+  await kit.handler.handle(mediaCall('call-none', 'play_media', { query: 'x', service: 'youtube' }), turn)
+  assert.equal(kit.outputs[0][1].error_code, 'tool_unavailable')
+})
+
+test('a pause or stop the user asks for is kept past pause while talking', async () => {
+  const kept = []
+  const kit = harness({
+    mediaPlayer: fakeMediaPlayer(),
+    mediaTalkPause: { keepPaused: () => kept.push('keep') },
+    resolveMedia: async () => ({
+      url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+      title: 'Never Gonna Give You Up',
+      channel: null,
+      videoId: 'dQw4w9WgXcQ',
+    }),
+  })
+  await kit.handler.handle(mediaCall('call-a', 'control_media', { action: 'pause' }), turn)
+  await kit.handler.handle(mediaCall('call-b', 'control_media', { action: 'resume' }), turn)
+  await kit.handler.handle(mediaCall('call-c', 'control_media', { action: 'stop' }), turn)
+  await kit.handler.handle(mediaCall('call-d', 'play_media', { query: 'rick', service: 'youtube' }), turn)
+  assert.deepEqual(kept, ['keep', 'keep'])
 })

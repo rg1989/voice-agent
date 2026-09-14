@@ -1,5 +1,6 @@
 import {
   CANCEL_AGENT_TASK_TOOL_NAME,
+  CONTROL_MEDIA_TOOL_NAME,
   ENTER_SLEEP_TOOL_NAME,
   IGNORE_INPUT_TOOL_NAME,
   RESPOND_PERMISSION_TOOL_NAME,
@@ -13,6 +14,7 @@ import { agentTaskToolHandlers } from './features/agent-task-tools.mjs'
 import { clientToolHandlers } from './features/client-tools.mjs'
 import { coreToolHandlers } from './features/core-tools.mjs'
 import { listeningToolHandlers } from './features/listening-tools.mjs'
+import { mediaToolHandlers } from './features/media-tools.mjs'
 import { personalToolHandlers } from './features/personal-tools.mjs'
 import { retrievalToolHandlers } from './features/retrieval-tools.mjs'
 import { scheduleToolHandlers } from './features/schedule-tools.mjs'
@@ -78,6 +80,7 @@ function needsToolResultSummary(toolName, args) {
     ENTER_SLEEP_TOOL_NAME,
     IGNORE_INPUT_TOOL_NAME,
     STOP_LISTENING_TOOL_NAME,
+    CONTROL_MEDIA_TOOL_NAME,
   ].includes(toolName)
 }
 
@@ -105,6 +108,9 @@ export class ToolCallHandler {
     presenceController = null,
     listeningGate = null,
     liveSettings = null,
+    mediaPlayer = null,
+    resolveMedia = null,
+    mediaTalkPause = null,
     onAgentActivity = () => {},
     inputAssets = null,
     frontendRetrieval = null,
@@ -136,6 +142,9 @@ export class ToolCallHandler {
     this.presenceController = presenceController
     this.listeningGate = listeningGate
     this.liveSettings = liveSettings
+    this.mediaPlayer = mediaPlayer
+    this.resolveMedia = resolveMedia
+    this.mediaTalkPause = mediaTalkPause
     this.onAgentActivity = onAgentActivity
     this.inputAssets = inputAssets
     this.frontendRetrieval = frontendRetrieval
@@ -156,6 +165,7 @@ export class ToolCallHandler {
       ...retrievalToolHandlers(this),
       ...clientToolHandlers(this),
       ...listeningToolHandlers(this),
+      ...mediaToolHandlers(this),
       ...Object.assign({}, ...optionalFrontendFeatures.map(feature => feature.handlers(this))),
     })
     this.processedCalls = new Set()
@@ -561,6 +571,7 @@ export class ToolCallHandler {
           ),
           inputPending: this.hasPendingBackendInput(),
           liveSettings: this.liveSettings?.get(),
+          mediaPlayer: this.mediaPlayer,
         }),
       })
       if (execution.handled && !execution.executed) {

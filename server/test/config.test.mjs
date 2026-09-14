@@ -301,3 +301,11 @@ test('selects only the explicit voice override for the active model family', () 
   assert.equal(omni.dashscopeVoice, 'Ethan-custom')
   assert.equal(defaults.dashscopeVoice, '')
 })
+
+test('media tools are on unless QWEN_AUDIO_MEDIA_TOOLS_ENABLED turns them off', () => {
+  assert.equal(resolveDisabledFrontendTools({}).includes('play_media'), false)
+  assert.deepEqual(resolveDisabledFrontendTools({
+    QWEN_AUDIO_WEB_TOOLS_ENABLED: 'true',
+    QWEN_AUDIO_MEDIA_TOOLS_ENABLED: 'false',
+  }), ['play_media', 'control_media'])
+})

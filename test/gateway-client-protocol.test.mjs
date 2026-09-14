@@ -5,6 +5,7 @@ import {
   GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES,
   GATEWAY_CLIENT_KNOWN_CAPABILITIES,
   GATEWAY_CLIENT_PROTOCOL_VERSION,
+  GatewayClientActionName,
   GatewayClientCapability,
   GatewayClientEnvelopeSchema,
   GatewayClientProtocolEvent,
@@ -526,4 +527,27 @@ test('bounds server events held while the client has not selected a protocol', (
     { type: 'voice.state', state: 'listening' },
     { type: 'voice.state', state: 'processing' },
   ])
+})
+
+test('publishes show_conversation as a negotiated Client Action', () => {
+  assert.equal(GatewayClientActionName.SHOW_CONVERSATION, 'show_conversation')
+  assert.equal(
+    GatewayClientCapability.CLIENT_ACTION_SHOW_CONVERSATION,
+    'client.actions.show_conversation',
+  )
+  assert.ok(GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES.includes(
+    GatewayClientCapability.CLIENT_ACTION_SHOW_CONVERSATION,
+  ))
+  const action = parseGatewayServerProtocolMessage({
+    type: GatewayClientProtocolEvent.CLIENT_ACTION_REQUEST,
+    event_id: 'evt_gateway_show_conversation',
+    name: GatewayClientActionName.SHOW_CONVERSATION,
+    arguments: { reason: 'ended' },
+  })
+  assert.equal(action.name, 'show_conversation')
+  assert.throws(() => parseGatewayServerProtocolMessage({
+    type: GatewayClientProtocolEvent.CLIENT_ACTION_REQUEST,
+    event_id: 'evt_gateway_bad_action',
+    name: 'Show Conversation',
+  }))
 })

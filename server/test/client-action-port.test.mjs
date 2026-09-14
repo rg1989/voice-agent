@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   ClientActionName,
   ClientActionPort,
+  clientActionCapability,
 } from '../src/client/client-action-port.mjs'
 import {
   PresenceController,
@@ -118,4 +119,18 @@ test('PresenceController commits sleeping after one completed Client Action', as
   assert.equal((await controller.requestSleep()).duplicate, true)
   controller.wake()
   assert.equal(controller.state, PresenceState.ACTIVE)
+})
+
+test('maps show_conversation to its own negotiated capability', () => {
+  assert.equal(
+    clientActionCapability(ClientActionName.SHOW_CONVERSATION),
+    GatewayClientCapability.CLIENT_ACTION_SHOW_CONVERSATION,
+  )
+  const port = new ClientActionPort({
+    getCapabilities: () => [
+      GatewayClientCapability.CLIENT_ACTION_SHOW_CONVERSATION,
+    ],
+  })
+  assert.equal(port.supports(ClientActionName.SHOW_CONVERSATION), true)
+  assert.equal(port.supports(ClientActionName.ENTER_SLEEP), false)
 })

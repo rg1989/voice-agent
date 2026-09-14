@@ -38,6 +38,30 @@ CLI 时也生效，桌面版与 CLI 共享同一套技能。MiniMax Code 的 Ski
 缺失时才在后台进程启动前跑一次 skills.sh（数秒），保证后台首次扫描即看到完整
 技能集。失败（例如离线）只记日志，绝不阻塞语音网关。
 
+Qwen Audio Agent 自带的技能放在仓库的 `skills/` 目录，例如 `media-playback`，
+它教后台为 Gateway 媒体工具查找 Netflix、Spotify 和 Stremio 链接。Gateway 每次
+启动时不经 skills.sh、不联网，直接把它们复制到 `~/.agents/skills/`（Oh My Pi (omp)、
+Codex、OpenCode、Kimi Code 和 DeepSeek 读取该目录）；当前后台有自己的目录时
+（`~/.claude/skills/`、`~/.pi/agent/skills/` 等）也复制一份。仅当仓库版本变化时才
+重写副本，其他后台目录中由它创建的旧副本也会一并更新；你自己创建的同名目录永远不会被覆盖。
+
+`media-playback` 可以用 TMDB 查询某部影片能否在你所在地区的 Netflix 上观看。要启用这项检查，
+在 `~/.config/qwaudio/config.env` 中加入 TMDB API 读取令牌和你所在地区的两位国家代码
+（ISO 3166-1，例如 `US`）：
+
+```bash
+TMDB_API_READ_TOKEN=<你的 TMDB API 读取令牌>
+TMDB_WATCH_REGION=<你的国家代码>
+QWEN_AUDIO_AGENT_ACP_FORWARD_ENV=TMDB_API_READ_TOKEN,TMDB_WATCH_REGION
+```
+
+未设置 `TMDB_WATCH_REGION` 时，后台会先问你要查询哪个国家。
+
+最后一行供 Oh My Pi (omp) 等通用 ACP 后台使用：Gateway 只把后台目录项允许的环境变量传给后台，
+通用 ACP 允许的是 `ACP_*` 以及 `QWEN_AUDIO_AGENT_ACP_FORWARD_ENV` 中列出的名称。其他后台
+收不到这个令牌，技能会跳过这项检查。TMDB 查询通过 `curl` 运行，因此在默认的 `native`
+权限模式下，后台可能会先询问你。
+
 钉住的 skills.sh 版本可用 `QWEN_AUDIO_AGENT_SKILLS_CLI_PACKAGE` 覆盖（例如
 `skills@latest`）。如果新后台尚未被 skills.sh 支持，可以向它的 `src/agents.ts`
 提交 Agent 定义——那是官方扩展点。

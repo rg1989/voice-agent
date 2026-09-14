@@ -22,6 +22,7 @@ export function createAcpBackendAdapter({
   acpClient,
   acpClientFactory,
   sessionToolServer,
+  mediaPlayer,
 } = {}) {
   const driver = backendDriver(protocol)
   const backend = {
@@ -55,6 +56,7 @@ export function createAcpBackendAdapter({
     ...(acpClient ? { client: acpClient } : {}),
     ...(acpClientFactory ? { clientFactory: acpClientFactory } : {}),
     ...(sessionToolServer ? { sessionToolServer } : {}),
+    ...(mediaPlayer ? { mediaPlayer } : {}),
   })
   return assertBackendPort(adapter, {
     name: `${profile.label || protocol} ACP adapter`,

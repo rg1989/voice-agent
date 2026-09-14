@@ -10,8 +10,10 @@ import {
   LIVE_SETTING_KEYS,
   LIVE_SETTINGS_DEFAULTS,
   LIVE_SETTINGS_ENV_KEYS,
+  MEDIA_BROWSER_IDS,
   liveSettingsFromEnvironment,
 } from '../core/live-settings.mjs'
+import { detectPlayerBrowsers, PLAYER_BROWSER_LABELS } from '../media/browsers.mjs'
 
 // Runtime settings the WebUI is allowed to change: which agent does the work,
 // which folder it works in, and which voice speaks.
@@ -177,7 +179,16 @@ function ompCommand() {
   return candidates.find(candidate => existsSync(candidate)) || ''
 }
 
-export function readRuntimeSettings() {
+// Every browser the media setting can name, marked with whether it is
+// installed here; auto works when any of them is.
+export function mediaBrowserOptions(detected = []) {
+  const installed = new Set(detected.map(entry => entry.id))
+  return MEDIA_BROWSER_IDS.map(id => (id === 'auto'
+    ? { id, label: 'Automatic', installed: detected.length > 0 }
+    : { id, label: PLAYER_BROWSER_LABELS[id], installed: installed.has(id) }))
+}
+
+export function readRuntimeSettings({ detectBrowsers = detectPlayerBrowsers } = {}) {
   const lines = readConfigLines()
   const protocol = valueOf(lines, CONFIG_KEYS.brain)
   const label = valueOf(lines, 'ACP_LABEL')
@@ -210,6 +221,10 @@ export function readRuntimeSettings() {
     followUpDefaults: FOLLOW_UP_DEFAULTS,
     cameraEnabled: live.cameraEnabled,
     roboticVoice: live.roboticVoice,
+    mediaBrowser: live.mediaBrowser,
+    mediaBrowserOptions: mediaBrowserOptions(detectBrowsers()),
+    mediaReturnToAssistant: live.mediaReturnToAssistant,
+    mediaPauseWhileTalking: live.mediaPauseWhileTalking,
     persona: readPersona(),
     personaVoice: selectedVoice(),
   }
@@ -351,6 +366,20 @@ export function updateRuntimeSettings(patch = {}) {
     changed.push('roboticVoice')
   }
 
+  if (typeof patch.mediaBrowser === 'string') {
+    if (!MEDIA_BROWSER_IDS.includes(patch.mediaBrowser)) {
+      throw Object.assign(new Error(`unknown media browser: ${patch.mediaBrowser}`), { status: 400 })
+    }
+    lines = applyValues(lines, { [CONFIG_KEYS.mediaBrowser]: patch.mediaBrowser })
+    changed.push('mediaBrowser')
+  }
+
+  for (const key of ['mediaReturnToAssistant', 'mediaPauseWhileTalking']) {
+    if (typeof patch[key] !== 'boolean') continue
+    lines = applyValues(lines, { [CONFIG_KEYS[key]]: patch[key] ? 'true' : 'false' })
+    changed.push(key)
+  }
+
   if (typeof patch.persona === 'string') {
     const persona = patch.persona.trim()
     // An empty persona stops the voice from building its instructions.
@@ -395,6 +424,9 @@ const MANAGED_ENV_KEYS = Object.freeze([
   CONFIG_KEYS.followUpSeconds,
   CONFIG_KEYS.cameraEnabled,
   CONFIG_KEYS.roboticVoice,
+  CONFIG_KEYS.mediaBrowser,
+  CONFIG_KEYS.mediaReturnToAssistant,
+  CONFIG_KEYS.mediaPauseWhileTalking,
   'ACP_COMMAND',
   'ACP_ARGS',
   'ACP_LABEL',

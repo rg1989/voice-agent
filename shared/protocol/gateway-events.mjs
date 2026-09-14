@@ -301,6 +301,11 @@ const GatewayVoicePayloadSchemas = Object.freeze({
   [GatewayServerEvent.CLIENT_STATE]: z.object({
     state: z.string().min(1),
   }).passthrough(),
+  [GatewayServerEvent.MEDIA_STATE]: z.object({
+    active: z.boolean(),
+    title: z.string().min(1).nullable(),
+    service: z.string().min(1).nullable(),
+  }).passthrough(),
   [GatewayServerEvent.ERROR]: z.object({
     message: z.string().min(1),
   }).passthrough(),

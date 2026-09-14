@@ -48,3 +48,16 @@ export async function saveSettings(patch) {
   if (!response.ok) throw new Error(payload.error || String(response.status))
   return payload
 }
+
+// Opens the media player's own browser profile on YouTube, so the user can
+// sign in there once. Playback later reuses that sign-in.
+export async function setupMediaPlayer() {
+  const response = await gatewayFetch('api/media/setup', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{}',
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(payload.error || String(response.status))
+  return payload
+}

@@ -394,6 +394,15 @@ one Presence state machine. The legacy `client.state` sleeping message remains
 accepted by current clients as a migration alias, but is no longer the execution
 boundary.
 
+`show_conversation` (capability `client.actions.show_conversation`) asks the
+desktop Client to open its conversation panel and bring it to the front. Gateway
+sends it when its media player stops because the user stopped it, it ended, or
+its window was closed, and only while the `mediaReturnToAssistant` setting is
+on. It goes to the supporting Clients that hold the voice, or to every
+supporting Client when none does. The output is `{ "mode": "panel" }`. Gateway also sends every Client a
+`media.state` event `{ active, title, service }` on connect and whenever
+playback starts, pauses, resumes or stops.
+
 Client Action is not a replacement for MCP, OpenAPI, ACP, or A2A. It covers capabilities owned by the connected Client Environment. Other external systems continue to use the appropriate tool or backend adapter.
 
 ### 5.4 Runtime commands and queries

@@ -172,6 +172,7 @@ them to the configuration file:
 | `QWEN_AUDIO_KNOWLEDGE_TOOL_ENABLED` | `true`; set to `false` to hide `knowledge` |
 | `QWEN_AUDIO_NOTES_TOOL_ENABLED` | `true`; set to `false` to hide `notes` |
 | `QWEN_AUDIO_RECALL_TOOL_ENABLED` | `true`; set to `false` to hide `recall` |
+| `QWEN_AUDIO_MEDIA_TOOLS_ENABLED` | `true`; set to `false` to hide `play_media` and `control_media` |
 | `QWEN_AUDIO_FRONTEND_PROFILE` | Empty; path to a lightweight Frontend Profile JSON file |
 | `QWEN_AUDIO_FRONTEND_MCP_CONFIG` | Empty; absolute path to the versioned frontend MCP JSON file |
 | `QWEN_AUDIO_FRONTEND_OPENAPI_CONFIG` | Empty; absolute path to the versioned frontend OpenAPI JSON config file |
@@ -184,6 +185,9 @@ them to the configuration file:
 | `QWEN_AUDIO_WAKE_WORD` | `hey_jarvis`; also `hey_lisa`, `hey_megan`, `hey_mycroft` or `glados`. The Gateway detects the wake word on its host with openWakeWord models. It downloads a needed model file from GitHub once and checks it |
 | `QWEN_AUDIO_FOLLOW_UP_SECONDS` | `5`; rounded to whole seconds from `0` to `10`. In `wake_word` mode, the Gateway keeps listening this long after a reply. Then it waits for the wake word again |
 | `QWEN_AUDIO_ROBOTIC_VOICE` | `false`; set to `true` to apply a robotic filter to the reply audio the Gateway sends to clients |
+| `QWEN_AUDIO_MEDIA_BROWSER` | `auto`; the browser the media player opens: `chrome`, `edge`, `chromium` or `brave`. `auto` uses the first one installed |
+| `QWEN_AUDIO_MEDIA_PAUSE_WHILE_TALKING` | `true`; the media player pauses while you talk to the assistant and plays again after the answer. Set to `false` to keep it playing |
+| `QWEN_AUDIO_MEDIA_RETURN_TO_ASSISTANT` | `false`; set to `true` so the desktop app opens its conversation panel when playback stops |
 | `SPEECH_TO_SPEECH_REALTIME_URL` | `ws://127.0.0.1:8765/v1/realtime` |
 | `SPEECH_TO_SPEECH_AUTH_TOKEN` | Empty; only for proxies with Bearer authentication |
 | `MINICPM_O_REALTIME_URL` | `ws://127.0.0.1:8006/v1/realtime?mode=audio` |

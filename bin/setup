@@ -6,12 +6,16 @@
 #   bin/setup ~/Downloads/voice-agent-setup.qwsetup      (from a clone of this repo)
 #   curl -fsSL https://raw.githubusercontent.com/rg1989/voice-agent/main/bin/setup | bash -s -- ~/voice-agent-setup.qwsetup
 #
-# No admin password: Node, Bun and Oh My Pi are installed for this user only.
+# No admin password for Node, Bun and Oh My Pi: they are installed for this user
+# only. Missing Linux packages (curl, tar, unzip, playerctl, and on Arch also yt-dlp
+# and deno) are installed with sudo apt-get, dnf or pacman.
 # Safe to run again; it updates what is already there.
 #
 # QWAUDIO_DIR               where the code lives (default: the clone this script is
 #                           in, otherwise ~/Documents/Projects/qwen-audio-agent)
 # QWAUDIO_SETUP_NO_START=1  install only: do not stop or start the gateway
+# QWAUDIO_SETUP_DRY_RUN=1   print what would be installed, written or started, and change nothing
+# QWAUDIO_SETUP_NO_DESKTOP=1  do not build or install the desktop app; open the web page instead
 set -euo pipefail
 
 REPO_URL="https://github.com/rg1989/voice-agent"
@@ -28,6 +32,19 @@ say() { printf '\n==> %s\n' "$*"; }
 note() { printf '    %s\n' "$*"; }
 fail() { printf '\nsetup: %s\n' "$*" >&2; exit 1; }
 
+dry_run() { [ "${QWAUDIO_SETUP_DRY_RUN:-}" = 1 ]; }
+
+# Everything that installs, writes, stops or starts something goes through run,
+# so a dry run can print the whole plan without touching this machine.
+run() {
+  if dry_run; then printf '    would run: %s\n' "$*"; else "$@"; fi
+}
+
+# Run a command inside a folder without changing this script's own folder.
+in_dir() {
+  (cd "$1" && shift && "$@")
+}
+
 default_dir() {
   local here="${BASH_SOURCE[0]:-}" root
   if [ -n "$here" ] && [ -f "$here" ]; then
@@ -37,6 +54,14 @@ default_dir() {
   printf '%s' "$HOME/Documents/Projects/qwen-audio-agent"
 }
 DIR="${QWAUDIO_DIR:-$(default_dir)}"
+MAC_APP="$HOME/Applications/Qwen Audio Agent.app"
+LINUX_APP_DIR="$HOME/.local/opt/qwen-audio-agent"
+# pgrep -f patterns for the running app. macOS: the main process only. A name match
+# (pgrep -x) would also hit "Qwen Audio Agent Helper", because the process name is
+# cut to 16 characters. Linux: the app started from its folder or from the
+# ~/.local/bin/qwen-audio-agent link.
+MAC_APP_PROCESS='/Qwen Audio Agent.app/Contents/MacOS/Qwen Audio Agent( |$)'
+LINUX_APP_PROCESS='^([^ ]*/)?qwen-audio-agent( |$)'
 
 # Whole script is a function so `curl | bash` reads all of it before running
 # anything: a command that reads stdin would otherwise eat the rest of the script.
@@ -52,38 +77,51 @@ main() {
   esac
   if [ "$OS" = Darwin ]; then check_macos; else check_linux; fi
 
-  install_node
-  install_bun_and_omp
-  # Replacing the code or Oh My Pi's database under a running gateway is asking for trouble.
-  [ "${QWAUDIO_SETUP_NO_START:-}" = 1 ] || stop_gateway
-  fetch_code
+  run install_node
+  run install_bun_and_omp
+  install_media_tools
+  # Replacing the code or Oh My Pi's database under a running gateway is asking for
+  # trouble, and a running desktop app would start its own gateway again.
+  if [ "${QWAUDIO_SETUP_NO_START:-}" != 1 ]; then
+    run stop_desktop
+    run stop_gateway
+  fi
+  run fetch_code
   # A zip download can lose the executable bits.
-  chmod +x "$DIR"/bin/* "$DIR"/install 2>/dev/null || true
+  run chmod +x "$DIR"/bin/* "$DIR"/install 2>/dev/null || true
   say "Installing packages and building the web UI (a few minutes)"
-  (cd "$DIR" && ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci --no-audit --no-fund)
+  run in_dir "$DIR" env ELECTRON_SKIP_BINARY_DOWNLOAD=1 npm ci --no-audit --no-fund
 
   if [ -n "$bundle" ]; then
     say "Restoring your setup from $bundle"
     if [ -n "${QWAUDIO_SETUP_PASSPHRASE:-}" ]; then
-      node "$DIR/bin/setup-bundle.mjs" import "$bundle"
+      run node "$DIR/bin/setup-bundle.mjs" import "$bundle"
     else
-      as_terminal node "$DIR/bin/setup-bundle.mjs" import "$bundle"
+      as_terminal run node "$DIR/bin/setup-bundle.mjs" import "$bundle"
     fi
-    [ -f "$CONFIG_DIR/config.env" ] || fail "the setup file was not restored"
+    dry_run || [ -f "$CONFIG_DIR/config.env" ] || fail "the setup file was not restored"
   elif [ ! -f "$CONFIG_DIR/config.env" ]; then
     note "No setup file given and no config yet. Run: node $DIR/cli/bin/qwenaudio.mjs config"
   fi
+  share_gateway_state
   # The gateway caches the login shell PATH; drop it so it sees the new Node and Bun.
-  rm -f "$CONFIG_DIR/cache/login-shell-path.json"
+  run rm -f "$CONFIG_DIR/cache/login-shell-path.json"
+  install_desktop
+  [ "$OS" = Darwin ] || install_hyprland_rules
+  install_autostart
 
   if [ "${QWAUDIO_SETUP_NO_START:-}" != 1 ] && [ -f "$CONFIG_DIR/config.env" ]; then
     say "Starting the gateway"
-    bash "$DIR/bin/restart"
-    open_url "http://127.0.0.1:3101"
+    run bash "$DIR/bin/restart"
+    launch_desktop
   fi
 
   say "Done"
-  note "Start or restart any time: $DIR/bin/restart   then open http://127.0.0.1:3101"
+  if [ "${QWAUDIO_SETUP_NO_DESKTOP:-}" = 1 ]; then
+    note "Start or restart any time: $DIR/bin/restart   then open http://127.0.0.1:3101"
+  else
+    note "Open the app any time: $DIR/bin/desktop   (restart only the gateway: $DIR/bin/restart)"
+  fi
   if [ "$OS" = Darwin ]; then
     if [ "$MACOS_NUM" -lt 1400 ]; then
       note "Computer control needs macOS 14 or newer; set it to Off in Settings on this Mac."
@@ -107,6 +145,28 @@ as_terminal() {
   if [ -t 0 ] || ! { : < /dev/tty; } 2>/dev/null; then "$@"; else "$@" < /dev/tty; fi
 }
 
+system_package_manager() {
+  command -v sudo >/dev/null 2>&1 || return 1
+  local manager
+  for manager in apt-get dnf pacman; do
+    if command -v "$manager" >/dev/null 2>&1; then printf '%s' "$manager"; return 0; fi
+  done
+  return 1
+}
+
+# Install distribution packages. sudo asks for the password, from the terminal
+# under `curl | bash`.
+install_system_packages() {
+  local manager
+  manager="$(system_package_manager)" || return 1
+  say "Installing $* (sudo asks for your password)"
+  case "$manager" in
+    apt-get) as_terminal run sh -c "sudo apt-get update -qq && sudo apt-get install -y -qq $*" ;;
+    dnf) as_terminal run sudo dnf install -y -q "$@" ;;
+    pacman) as_terminal run sudo pacman -S --needed --noconfirm "$@" ;;
+  esac
+}
+
 check_macos() {
   local version major minor
   version="$(sw_vers -productVersion)"
@@ -128,17 +188,8 @@ check_linux() {
     command -v "$tool" >/dev/null 2>&1 || missing="$missing $tool"
   done
   if [ -n "$missing" ]; then
-    if command -v sudo >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1; then
-      say "Installing$missing (sudo asks for your password)"
-      # shellcheck disable=SC2086
-      as_terminal sh -c "sudo apt-get update -qq && sudo apt-get install -y -qq$missing" || fail "could not install$missing"
-    elif command -v sudo >/dev/null 2>&1 && command -v dnf >/dev/null 2>&1; then
-      say "Installing$missing (sudo asks for your password)"
-      # shellcheck disable=SC2086
-      as_terminal sudo dnf install -y -q $missing || fail "could not install$missing"
-    else
-      fail "install these first:$missing"
-    fi
+    # shellcheck disable=SC2086
+    install_system_packages $missing || fail "install these first:$missing"
   fi
   glibc="$(getconf GNU_LIBC_VERSION 2>/dev/null | awk '{print $2}' || true)"
   [ -n "$glibc" ] || fail "this Linux does not use glibc (for example Alpine); Node and Bun builds need glibc"
@@ -204,6 +255,94 @@ install_bun_and_omp() {
   "$BUN_INSTALL/bin/omp" --version >/dev/null || fail "Oh My Pi did not install"
 }
 
+brew_path() {
+  local candidate
+  for candidate in "$(command -v brew 2>/dev/null || true)" /opt/homebrew/bin/brew /usr/local/bin/brew; do
+    if [ -n "$candidate" ] && [ -x "$candidate" ]; then printf '%s' "$candidate"; return 0; fi
+  done
+  return 1
+}
+
+# The voice "play" tool finds videos with yt-dlp, which needs deno for YouTube.
+# Pausing and skipping use playerctl (MPRIS) on Linux and media-control on macOS.
+install_media_tools() {
+  local missing="" tool brew=""
+  if [ "$OS" = Darwin ]; then
+    brew="$(brew_path || true)"
+    if [ -n "$brew" ]; then PATH="$(dirname "$brew"):$PATH"; fi
+    for tool in yt-dlp deno media-control; do
+      command -v "$tool" >/dev/null 2>&1 || missing="$missing $tool"
+    done
+  else
+    for tool in yt-dlp deno playerctl; do
+      command -v "$tool" >/dev/null 2>&1 || missing="$missing $tool"
+    done
+  fi
+  [ -n "$missing" ] || return 0
+  if [ -n "$brew" ]; then
+    say "Installing$missing with Homebrew"
+    # shellcheck disable=SC2086
+    run "$brew" install $missing || note "Homebrew could not install$missing; playing media by voice needs them."
+  elif [ "$(system_package_manager || true)" = pacman ]; then
+    # shellcheck disable=SC2086
+    install_system_packages $missing || note "pacman could not install$missing; playing media by voice needs them."
+  else
+    case "$missing" in
+      *playerctl*) install_system_packages playerctl || note "Install playerctl to pause and skip media by voice." ;;
+    esac
+    case "$missing" in
+      *yt-dlp*) run install_user_binary yt-dlp || note "Could not install yt-dlp; playing media by voice needs it." ;;
+    esac
+    case "$missing" in
+      *deno*) run install_user_binary deno || note "Could not install deno; playing media by voice needs it." ;;
+    esac
+    case "$missing" in
+      *media-control*) note "Pausing and skipping media by voice needs media-control: install Homebrew (https://brew.sh), then run: brew install media-control" ;;
+    esac
+  fi
+}
+
+# yt-dlp and deno from their GitHub releases, for this user only, checked against
+# the published SHA-256 sums. Used where no package manager provides them.
+# The body runs in a subshell: fail() exits it, and any command failing under
+# set -e stops it, but only that subshell dies. install_user_binary itself
+# returns the subshell's exit status, so a caller's `|| note ...` still runs
+# and the rest of setup (stop_gateway, fetch_code, npm ci) still happens.
+install_user_binary() (
+  local name="$1" base asset sums tmp
+  case "$name-$OS-$ARCH" in
+    yt-dlp-Linux-x86_64) asset=yt-dlp_linux ;;
+    yt-dlp-Linux-*) asset=yt-dlp_linux_aarch64 ;;
+    yt-dlp-Darwin-*) asset=yt-dlp_macos ;;
+    deno-Linux-x86_64) asset=deno-x86_64-unknown-linux-gnu.zip ;;
+    deno-Linux-*) asset=deno-aarch64-unknown-linux-gnu.zip ;;
+    deno-Darwin-x86_64) asset=deno-x86_64-apple-darwin.zip ;;
+    deno-Darwin-*) asset=deno-aarch64-apple-darwin.zip ;;
+    *) fail "no $name download for $OS $ARCH" ;;
+  esac
+  if [ "$name" = deno ]; then
+    base="https://github.com/denoland/deno/releases/latest/download"
+    sums="$asset.sha256sum"
+  else
+    base="https://github.com/yt-dlp/yt-dlp/releases/latest/download"
+    sums="SHA2-256SUMS"
+  fi
+  say "Installing $name for this user"
+  tmp="$(mktemp -d)"
+  curl -fsSL "$base/$asset" -o "$tmp/$asset"
+  curl -fsSL "$base/$sums" -o "$tmp/sums"
+  (cd "$tmp" && grep " $asset\$" sums | sha256_check) >/dev/null || { rm -rf "$tmp"; fail "$name download failed its checksum"; }
+  mkdir -p "$HOME/.local/bin"
+  if [ "$name" = deno ]; then
+    unzip -o -q "$tmp/$asset" deno -d "$HOME/.local/bin"
+  else
+    cp "$tmp/$asset" "$HOME/.local/bin/yt-dlp"
+  fi
+  chmod +x "$HOME/.local/bin/$name"
+  rm -rf "$tmp"
+  add_to_path "$HOME/.local/bin"
+)
+
 # Startup files for future shells: the gateway reads PATH from `$SHELL -l -i`, and
 # a terminal opened later reads its own.
 profile_files() {
@@ -217,14 +356,30 @@ profile_files() {
   esac
 }
 
+# Add a line to a file unless the file already has it.
+append_line() {
+  local file="$1" line="$2"
+  mkdir -p "$(dirname "$file")"
+  touch "$file"
+  grep -qF "$line" "$file" || printf '\n%s\n' "$line" >> "$file"
+}
+
 add_to_path() {
-  local dir="$1" line file
-  line="export PATH=\"$dir:\$PATH\""
+  local dir="$1" file
   export PATH="$dir:$PATH"
   profile_files | while IFS= read -r file; do
-    touch "$file"
-    grep -qF "$line" "$file" || printf '\n%s\n' "$line" >> "$file"
+    append_line "$file" "export PATH=\"$dir:\$PATH\""
   done
+}
+
+# The desktop app keeps its gateway lease in state/desktop unless config.env names
+# a state folder. Sharing one folder lets the app and bin/restart see each other's
+# lease, so they never run two gateways.
+share_gateway_state() {
+  local config="$CONFIG_DIR/config.env"
+  [ -f "$config" ] || return 0
+  if grep -q '^QWAUDIO_STATE_DIR=' "$config"; then return 0; fi
+  run append_line "$config" "QWAUDIO_STATE_DIR=$CONFIG_DIR/state"
 }
 
 port_pid() {
@@ -246,6 +401,30 @@ stop_gateway() {
     sleep 0.25
   done
   fail "the running gateway (pid $pid) did not stop; quit it and run this again"
+}
+
+desktop_running() {
+  if [ "$OS" = Darwin ]; then
+    pgrep -f "$MAC_APP_PROCESS" >/dev/null 2>&1
+  else
+    pgrep -f "$LINUX_APP_PROCESS" >/dev/null 2>&1
+  fi
+}
+
+stop_desktop() {
+  desktop_running || return 0
+  say "Quitting the desktop app"
+  if [ "$OS" = Darwin ]; then
+    osascript -e 'tell application id "ai.qwenaudio.agent" to quit' >/dev/null 2>&1 || pkill -f "$MAC_APP_PROCESS" || true
+  else
+    pkill -f "$LINUX_APP_PROCESS" || true
+  fi
+  for _ in $(seq 1 40); do
+    desktop_running || return 0
+    sleep 0.25
+  done
+  # Replacing the app folder under a running app would break it.
+  fail "the desktop app did not quit; quit it and run this again"
 }
 
 have_git() {
@@ -283,6 +462,92 @@ fetch_code() {
   fi
 }
 
+desktop_entry() {
+  cat <<EOF
+[Desktop Entry]
+Type=Application
+Name=Qwen Audio Agent
+Comment=Talk to your agent
+Exec=/bin/bash "$DIR/bin/desktop" %U
+Icon=$DIR/desktop/build/icon.png
+Terminal=false
+Categories=Utility;
+MimeType=x-scheme-handler/qwaudio;
+StartupWMClass=qwen-audio-agent
+EOF
+}
+
+# Write a whole file; a dry run only names it.
+write_file() {
+  if dry_run; then note "would write $1"; return 0; fi
+  mkdir -p "$(dirname "$1")"
+  printf '%s\n' "$2" > "$1"
+}
+
+# A failed desktop build must not cost the rest of the install: open the web page
+# instead. The global also keeps launch_desktop and login autostart from opening an
+# app that is not there.
+desktop_build_failed() {
+  note "The desktop app did not build; opening the web page instead. Run setup again to retry."
+  QWAUDIO_SETUP_NO_DESKTOP=1
+}
+
+# The desktop app, built unsigned from this checkout into a plain folder: no dmg,
+# AppImage (FUSE) or deb step. It attaches to the gateway bin/restart starts.
+install_desktop() {
+  [ "${QWAUDIO_SETUP_NO_DESKTOP:-}" != 1 ] || return 0
+  # Install-only mode does not quit the app, and replacing its folder under it would
+  # break its windows and tray.
+  if [ "${QWAUDIO_SETUP_NO_START:-}" = 1 ] && ! dry_run && desktop_running; then
+    note "The desktop app is running; quit it and run setup again to update it."
+    return 0
+  fi
+  local builder="$DIR/node_modules/.bin/electron-builder" built arch_flag=--x64
+  say "Building the desktop app (a few minutes)"
+  run rm -rf "$DIR/dist/desktop"
+  if [ "$OS" = Darwin ]; then
+    # Name the architecture. Without it electron-builder builds for the Node running
+    # it, which is x64 under Rosetta, and the app lands in a different folder.
+    built="$DIR/dist/desktop/mac/Qwen Audio Agent.app"
+    if [ "$ARCH" = arm64 ]; then
+      arch_flag=--arm64
+      built="$DIR/dist/desktop/mac-arm64/Qwen Audio Agent.app"
+    fi
+    # identity "-" signs ad hoc: no Apple certificate or notarization on this Mac.
+    if ! run in_dir "$DIR" "$builder" --config desktop/electron-builder.yml --mac dir "$arch_flag" \
+      --config.mac.identity=- --config.mac.hardenedRuntime=false --config.mac.notarize=false --publish never ||
+      { ! dry_run && [ ! -d "$built" ]; }; then
+      desktop_build_failed
+      return 0
+    fi
+    run rm -rf "$MAC_APP"
+    run mkdir -p "$HOME/Applications"
+    run cp -R "$built" "$MAC_APP"
+  else
+    built="$DIR/dist/desktop/linux-unpacked"
+    if [ "$ARCH" != x86_64 ]; then
+      arch_flag=--arm64
+      built="$DIR/dist/desktop/linux-arm64-unpacked"
+    fi
+    if ! run in_dir "$DIR" "$builder" --config desktop/electron-builder.yml --linux dir "$arch_flag" --publish never ||
+      { ! dry_run && [ ! -x "$built/qwen-audio-agent" ]; }; then
+      desktop_build_failed
+      return 0
+    fi
+    run rm -rf "$LINUX_APP_DIR"
+    run mkdir -p "$(dirname "$LINUX_APP_DIR")" "$HOME/.local/bin"
+    run cp -R "$built" "$LINUX_APP_DIR"
+    run ln -sfn "$LINUX_APP_DIR/qwen-audio-agent" "$HOME/.local/bin/qwen-audio-agent"
+    write_file "$HOME/.local/share/applications/qwen-audio-agent.desktop" "$(desktop_entry)"
+    if command -v update-desktop-database >/dev/null 2>&1; then
+      run update-desktop-database "$HOME/.local/share/applications"
+    fi
+  fi
+  # The app caches the login shell PATH as well; drop it so it sees the new Node and Bun.
+  run rm -f "$HOME/Library/Application Support/Qwen Audio Agent/cache/login-shell-path.json" \
+    "${XDG_CONFIG_HOME:-$HOME/.config}/Qwen Audio Agent/cache/login-shell-path.json"
+}
+
 open_url() {
   if [ "$OS" = Darwin ]; then
     open "$1" || true
@@ -291,6 +556,190 @@ open_url() {
   fi
 }
 
+# Start a desktop program that outlives this script. On Omarchy uwsm-app gives it
+# its own session scope, the way Omarchy starts its own apps.
+detach() {
+  if command -v uwsm-app >/dev/null 2>&1; then set -- uwsm-app -- "$@"; fi
+  setsid -f "$@" >/dev/null 2>&1
+}
+
+# The desktop app is the voice client. Opening the web page as well would put a
+# second microphone on the same gateway.
+launch_desktop() {
+  if [ "${QWAUDIO_SETUP_NO_DESKTOP:-}" = 1 ]; then
+    run open_url "http://127.0.0.1:3101"
+  elif [ "$OS" = Darwin ]; then
+    run bash "$DIR/bin/desktop"
+  elif [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
+    run detach "$DIR/bin/desktop"
+  fi
+}
+
+# The user's Hyprland config: hyprland.lua (Omarchy 4, Hyprland 0.56) or the older
+# hyprland.conf. Prints nothing when there is no Hyprland config.
+hyprland_config() {
+  local hypr="${XDG_CONFIG_HOME:-$HOME/.config}/hypr"
+  if [ -f "$hypr/hyprland.lua" ]; then
+    printf '%s' "$hypr/hyprland.lua"
+  elif [ -f "$hypr/hyprland.conf" ]; then
+    printf '%s' "$hypr/hyprland.conf"
+  fi
+}
+
+hyprland_rules_lua() {
+  cat <<'EOF'
+-- Written by bin/setup of qwen-audio-agent; running setup again replaces this file.
+
+-- The voice orb floats and stays above other windows, fullscreen ones included,
+-- on every workspace, and does not take focus when it appears. The anchored title
+-- keeps out the conversation panel (title qwen-audio-agent-panel), which has the
+-- same class and must take focus when it opens.
+hl.window_rule({
+  match = { class = "^qwen-audio-agent$", title = "^qwen-audio-agent$" },
+  float = true,
+  pin = true,
+  no_initial_focus = true,
+  tag = "-default-opacity",
+  opacity = "1 1",
+  border_size = 0,
+  no_shadow = true,
+  no_blur = true,
+  no_dim = true,
+})
+
+-- The media player fills the screen maximized instead of fullscreen, so the orb
+-- stays visible above it.
+hl.window_rule({
+  match = { class = "^qwaudio-player$" },
+  suppress_event = "fullscreen",
+  maximize = true,
+  tag = "-default-opacity",
+  opacity = "1 1",
+})
+EOF
+  if [ "${QWAUDIO_SETUP_NO_DESKTOP:-}" != 1 ]; then
+    cat <<EOF
+
+-- Open the desktop app, and the gateway with it, when Hyprland starts.
+hl.on("hyprland.start", function()
+  hl.exec_cmd("$(desktop_login_command)")
+end)
+EOF
+  fi
+}
+
+hyprland_rules_conf() {
+  local orb='match:class ^(qwen-audio-agent)$, match:title ^(qwen-audio-agent)$'
+  local player='match:class ^(qwaudio-player)$'
+  cat <<EOF
+# Written by bin/setup of qwen-audio-agent; running setup again replaces this file.
+
+# The voice orb floats and stays above other windows, fullscreen ones included,
+# on every workspace, and does not take focus when it appears. The anchored title
+# keeps out the conversation panel (title qwen-audio-agent-panel), which has the
+# same class and must take focus when it opens.
+windowrule = float on, $orb
+windowrule = pin on, $orb
+windowrule = no_initial_focus on, $orb
+windowrule = tag -default-opacity, $orb
+windowrule = opacity 1 1, $orb
+windowrule = border_size 0, $orb
+windowrule = no_shadow on, $orb
+windowrule = no_blur on, $orb
+windowrule = no_dim on, $orb
+
+# The media player fills the screen maximized instead of fullscreen, so the orb
+# stays visible above it.
+windowrule = suppress_event fullscreen, $player
+windowrule = maximize on, $player
+windowrule = tag -default-opacity, $player
+windowrule = opacity 1 1, $player
+EOF
+  if [ "${QWAUDIO_SETUP_NO_DESKTOP:-}" != 1 ]; then
+    printf '\n# Open the desktop app, and the gateway with it, when Hyprland starts.\nexec-once = %s\n' "$(desktop_login_command)"
+  fi
+}
+
+# Hyprland tiles new windows, and Electron cannot keep a window on top on Wayland,
+# so window rules place the orb and the player instead.
+install_hyprland_rules() {
+  local config rules
+  config="$(hyprland_config)"
+  case "$config" in
+    *.lua)
+      rules="$(dirname "$config")/qwaudio.lua"
+      write_file "$rules" "$(hyprland_rules_lua)"
+      run append_line "$config" "pcall(dofile, \"$rules\")"
+      ;;
+    *.conf)
+      rules="$(dirname "$config")/qwaudio.conf"
+      write_file "$rules" "$(hyprland_rules_conf)"
+      run append_line "$config" "source = $rules"
+      ;;
+    *) return 0 ;;
+  esac
+  say "Added window rules for the orb and the media player: $rules"
+  if [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] && command -v hyprctl >/dev/null 2>&1; then
+    run hyprctl reload
+  fi
+}
+
+# How a Hyprland session opens the desktop app at login.
+desktop_login_command() {
+  if command -v uwsm-app >/dev/null 2>&1; then
+    printf "uwsm-app -- '%s'" "$DIR/bin/desktop"
+  else
+    printf "'%s'" "$DIR/bin/desktop"
+  fi
+}
+
+# macOS login item. launchd ends a job's process group when the job exits;
+# AbandonProcessGroup keeps the gateway that bin/desktop starts running after that.
+launch_agent_plist() {
+  cat <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.qwen-audio-agent.desktop</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>$DIR/bin/desktop</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>AbandonProcessGroup</key>
+  <true/>
+</dict>
+</plist>
+EOF
+}
+
+# Open the desktop app, and the gateway with it, at login.
+install_autostart() {
+  [ "${QWAUDIO_SETUP_NO_DESKTOP:-}" != 1 ] || return 0
+  if [ "$OS" = Darwin ]; then
+    # macOS privacy protection gives a launchd job no access to these folders:
+    # bash would fail at login, or a prompt naming bash would ask for access.
+    case "$DIR/" in
+      "$HOME/Documents/"* | "$HOME/Desktop/"* | "$HOME/Downloads/"* | "$HOME/Library/Mobile Documents/"*)
+        say "Not opening the app at login"
+        note "macOS does not let a login item read $DIR."
+        note "To open the app at login, put the checkout outside ~/Documents, ~/Desktop, ~/Downloads"
+        note "and iCloud Drive, for example QWAUDIO_DIR=~/qwen-audio-agent, and run setup again."
+        return 0
+        ;;
+    esac
+    write_file "$HOME/Library/LaunchAgents/com.qwen-audio-agent.desktop.plist" "$(launch_agent_plist)"
+  elif [ -z "$(hyprland_config)" ]; then
+    # On Hyprland the rules file opens the app instead, so it never starts twice.
+    write_file "${XDG_CONFIG_HOME:-$HOME/.config}/autostart/qwen-audio-agent.desktop" "$(desktop_entry)"
+  fi
+}
+
 # exit on the same line: bash reads a script as it runs it, and the update step
 # can replace this very file, so nothing after main may be read again.
-main "$@"; exit
+# QWAUDIO_SETUP_SOURCE_ONLY=1 only defines the functions (the tests call them one by one).
+[ "${QWAUDIO_SETUP_SOURCE_ONLY:-}" = 1 ] || { main "$@"; exit; }

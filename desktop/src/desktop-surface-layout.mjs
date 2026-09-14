@@ -7,6 +7,9 @@ export const DESKTOP_TASK_CARD_HEIGHT = 54
 export const DESKTOP_TASK_CARD_GAP = 8
 export const DESKTOP_TASK_STACK_PADDING = 8
 export const DESKTOP_TASK_STACK_LIFT = 14
+// The caption bubble sits between the orb and the task cards and tucks under
+// the orb by the same lift. Keep in sync with .desktop-caption in styles.css.
+export const DESKTOP_CAPTION_HEIGHT = 50
 const DESKTOP_TASK_PLACEMENT_HYSTERESIS = 48
 
 function clamp(value, minimum, maximum) {
@@ -60,23 +63,33 @@ function normalizedTaskCount(value) {
   return Math.max(0, Math.floor(Number(value) || 0))
 }
 
-function taskSurfaceHeight(taskCount) {
+function hasSurface(taskCount, caption) {
+  return normalizedTaskCount(taskCount) > 0 || caption === true
+}
+
+function taskSurfaceHeight(taskCount, caption = false) {
   const count = normalizedTaskCount(taskCount)
-  if (count === 0) return 0
+  const captionHeight = caption === true
+    ? DESKTOP_CAPTION_HEIGHT - DESKTOP_TASK_STACK_LIFT
+    : 0
+  if (count === 0) return captionHeight
   const stackHeight = (
     count * DESKTOP_TASK_CARD_HEIGHT
     + Math.max(0, count - 1) * DESKTOP_TASK_CARD_GAP
     + DESKTOP_TASK_STACK_PADDING * 2
   )
-  return stackHeight - DESKTOP_TASK_STACK_LIFT
+  // Only the element that touches the orb tucks under it.
+  return caption === true
+    ? captionHeight + stackHeight
+    : stackHeight - DESKTOP_TASK_STACK_LIFT
 }
 
 export function desktopSurfaceSize(taskCount, {
+  caption = false,
   taskAreaHeight = Number.POSITIVE_INFINITY,
   workAreaHeight,
 } = {}) {
-  const count = normalizedTaskCount(taskCount)
-  if (count === 0) {
+  if (!hasSurface(taskCount, caption)) {
     return { width: DESKTOP_ORB_WIDTH, height: DESKTOP_ORB_HEIGHT }
   }
   const legacyAvailableHeight = Number.isFinite(workAreaHeight)
@@ -88,7 +101,7 @@ export function desktopSurfaceSize(taskCount, {
   return {
     width: DESKTOP_TASK_SURFACE_WIDTH,
     height: DESKTOP_ORB_HEIGHT + Math.min(
-      taskSurfaceHeight(count),
+      taskSurfaceHeight(taskCount, caption),
       availableHeight,
     ),
   }
@@ -96,16 +109,17 @@ export function desktopSurfaceSize(taskCount, {
 
 export function desktopOrbBounds(bounds, {
   taskCount = 0,
+  caption = false,
   placement = 'below',
   orbOffsetX,
 } = {}) {
-  const hasTaskSurface = normalizedTaskCount(taskCount) > 0
-  const horizontalOffset = hasTaskSurface && Number.isFinite(orbOffsetX)
+  const surface = hasSurface(taskCount, caption)
+  const horizontalOffset = surface && Number.isFinite(orbOffsetX)
     ? orbOffsetX
     : Math.round((bounds.width - DESKTOP_ORB_WIDTH) / 2)
   return {
     x: bounds.x + horizontalOffset,
-    y: hasTaskSurface && placement === 'above'
+    y: surface && placement === 'above'
       ? bounds.y + bounds.height - DESKTOP_ORB_HEIGHT
       : bounds.y,
     width: DESKTOP_ORB_WIDTH,
@@ -117,10 +131,11 @@ export function desktopTaskPlacement({
   orbBounds,
   workArea,
   taskCount,
+  caption = false,
   placement = 'below',
 }) {
-  if (normalizedTaskCount(taskCount) === 0) return placement
-  const requestedHeight = taskSurfaceHeight(taskCount)
+  if (!hasSurface(taskCount, caption)) return placement
+  const requestedHeight = taskSurfaceHeight(taskCount, caption)
   const availableAbove = Math.max(0, orbBounds.y - workArea.y)
   const availableBelow = Math.max(0, (
     workArea.y + workArea.height
@@ -144,13 +159,16 @@ export function desktopTaskPlacement({
 export function desktopSurfaceLayout({
   bounds,
   currentTaskCount = 0,
+  currentCaption = false,
   taskCount = 0,
+  caption = false,
   placement = 'below',
   orbOffsetX,
   workArea,
 }) {
   const currentOrb = desktopOrbBounds(bounds, {
     taskCount: currentTaskCount,
+    caption: currentCaption,
     placement,
     orbOffsetX,
   })
@@ -171,26 +189,26 @@ export function desktopSurfaceLayout({
     orbBounds,
     workArea,
     taskCount,
+    caption,
     placement,
   })
   const taskAreaHeight = nextPlacement === 'above'
     ? orbBounds.y - workArea.y
     : workArea.y + workArea.height - orbBounds.y - orbBounds.height
-  const size = desktopSurfaceSize(taskCount, { taskAreaHeight })
+  const size = desktopSurfaceSize(taskCount, { caption, taskAreaHeight })
+  const surface = hasSurface(taskCount, caption)
   const x = clamp(
     orbBounds.x - Math.round((size.width - DESKTOP_ORB_WIDTH) / 2),
     workArea.x,
     workArea.x + workArea.width - size.width,
   )
-  const y = normalizedTaskCount(taskCount) > 0 && nextPlacement === 'above'
+  const y = surface && nextPlacement === 'above'
     ? orbBounds.y + DESKTOP_ORB_HEIGHT - size.height
     : orbBounds.y
 
   return {
     bounds: { x, y, width: size.width, height: size.height },
     placement: nextPlacement,
-    orbOffsetX: normalizedTaskCount(taskCount) > 0
-      ? orbBounds.x - x
-      : 0,
+    orbOffsetX: surface ? orbBounds.x - x : 0,
   }
 }

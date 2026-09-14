@@ -5,6 +5,7 @@ import { RECOMMENDED_WAKE_WORD } from './listening.js'
 import {
   fetchSettings,
   saveSettings,
+  setupMediaPlayer,
   waitForGatewayThenReload,
 } from './settings-api.js'
 
@@ -117,11 +118,74 @@ export function ListeningSettings({ settings, disabled, save }) {
   </section>
 }
 
+function mediaBrowserText(option) {
+  if (option.id === 'auto') return [t('自动'), t('用第一个已安装的浏览器。')]
+  return [option.label, option.installed ? '' : t('未安装')]
+}
+
+// Player browser, pause while talking and return to the assistant. The gateway
+// applies these live and answers restarting:false, so save() only refreshes.
+export function MediaSettings({ settings, disabled, save, onSetup }) {
+  if (!Array.isArray(settings?.mediaBrowserOptions)) return null
+  const anyInstalled = settings.mediaBrowserOptions.some(option => option.installed)
+  return <section className="settings-group">
+    <h4>{t('媒体播放')}</h4>
+    <p className="settings-hint">{t('让语音播放 YouTube 和 YouTube Music 的浏览器。播放器用自己单独的资料目录，不会碰你平时用的浏览器。改完立即生效，不会重启 Gateway。')}</p>
+    <div className="settings-options">
+      {settings.mediaBrowserOptions.map(option => {
+        const [label, detail] = mediaBrowserText(option)
+        return <button
+          key={option.id}
+          type="button"
+          className={`settings-option${settings.mediaBrowser === option.id ? ' selected' : ''}`}
+          disabled={disabled || !option.installed}
+          onClick={() => save({ mediaBrowser: option.id })}
+        >
+          <b>{label}</b>
+          {detail && <small>{detail}</small>}
+        </button>
+      })}
+    </div>
+    {!anyInstalled && <p className="settings-error">{t('没有找到支持的浏览器。请安装 Google Chrome、Microsoft Edge、Brave 或 Chromium。')}</p>}
+    <label className="settings-toggle">
+      <input
+        type="checkbox"
+        checked={Boolean(settings.mediaPauseWhileTalking)}
+        disabled={disabled}
+        onChange={event => save({ mediaPauseWhileTalking: event.target.checked })}
+      />
+      <span>
+        <b>{t('说话时暂停播放')}</b>
+        <small>{t('你开口时暂停，助手回答完再继续。')}</small>
+      </span>
+    </label>
+    <label className="settings-toggle">
+      <input
+        type="checkbox"
+        checked={Boolean(settings.mediaReturnToAssistant)}
+        disabled={disabled}
+        onChange={event => save({ mediaReturnToAssistant: event.target.checked })}
+      />
+      <span>
+        <b>{t('停止播放后回到助手')}</b>
+        <small>{t('停止播放或关闭播放器后，把对话窗口调到前面。')}</small>
+      </span>
+    </label>
+    <p className="settings-hint">{t('在播放器里打开 YouTube，登录一次你的账号，以后播放都用这个登录。')}</p>
+    <div className="folder-current">
+      <button type="button" disabled={disabled || !anyInstalled} onClick={onSetup}>
+        {t('设置播放器')}
+      </button>
+    </div>
+  </section>
+}
+
 export default function SettingsPanel({ onClose, setOutputVoice }) {
   const [settings, setSettings] = useState(null)
   const [browsing, setBrowsing] = useState(false)
   const [busy, setBusy] = useState(false)
   const [restarting, setRestarting] = useState(false)
+  const [settingUp, setSettingUp] = useState(false)
   const [error, setError] = useState('')
   const [sampling, setSampling] = useState('')
   const [personaEdit, setPersonaEdit] = useState(null)
@@ -164,8 +228,25 @@ export default function SettingsPanel({ onClose, setOutputVoice }) {
     }
   }, [busy, restarting, refresh, setOutputVoice])
 
-  const disabled = busy || restarting || !settings
+  const disabled = busy || restarting || settingUp || !settings
   const persona = personaEdit ?? settings?.persona ?? ''
+
+  // Locks the whole panel (via `disabled` above) for the duration of the
+  // request, same as `save` does with `busy` — otherwise repeated clicks
+  // fire overlapping POST /api/media/setup requests that each spawn/relaunch
+  // a kiosk browser process.
+  const setupPlayer = useCallback(async () => {
+    if (settingUp || busy || restarting) return
+    setSettingUp(true)
+    setError('')
+    try {
+      await setupMediaPlayer()
+    } catch (caught) {
+      setError(caught.message || t('播放器没有打开'))
+    } finally {
+      setSettingUp(false)
+    }
+  }, [settingUp, busy, restarting])
 
   return <aside className="settings-panel" aria-label={t('设置')}>
     <header>
@@ -226,6 +307,8 @@ export default function SettingsPanel({ onClose, setOutputVoice }) {
         </section>
 
         <ListeningSettings settings={settings} disabled={disabled} save={save} />
+
+        <MediaSettings settings={settings} disabled={disabled} save={save} onSetup={setupPlayer} />
 
         {settings.computerUseOptions && <section className="settings-group">
           <h4>{t('电脑控制')}</h4>
@@ -372,7 +455,7 @@ export default function SettingsPanel({ onClose, setOutputVoice }) {
         </section>
 
         <p className="settings-hint settings-footnote">
-          {t('除了音色、聆听方式和人设，这里的改动都会重启 Gateway，正在进行的任务会中断。')}
+          {t('除了音色、聆听方式、人设和媒体播放，这里的改动都会重启 Gateway，正在进行的任务会中断。')}
         </p>
       </>}
   </aside>

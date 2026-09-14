@@ -198,3 +198,24 @@ test('validates the supported AG-UI activity event surface', () => {
   assert.equal(event.replace, true)
   assert.equal(event.activityType, 'qwen.audio.task')
 })
+
+test('validates the media.state event', () => {
+  assert.equal(GatewayServerEvent.MEDIA_STATE, 'media.state')
+  assert.deepEqual(parseGatewayServerMessage({
+    type: GatewayServerEvent.MEDIA_STATE,
+    active: true,
+    title: 'Blue in Green',
+    service: 'youtube_music',
+  }), {
+    type: 'media.state',
+    active: true,
+    title: 'Blue in Green',
+    service: 'youtube_music',
+  })
+  assert.throws(() => parseGatewayServerMessage({
+    type: GatewayServerEvent.MEDIA_STATE,
+    active: 'yes',
+    title: null,
+    service: null,
+  }))
+})

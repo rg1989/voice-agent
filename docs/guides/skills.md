@@ -47,6 +47,36 @@ one-off skills.sh run (a few seconds) before the backend process starts, so
 the backend always sees a complete skill set on its first scan. Failures
 (for example offline) are logged and never block the voice gateway.
 
+Skills that ship with Qwen Audio Agent itself live in the repository's
+`skills/` folder. One example is `media-playback`, which teaches backends to
+find Netflix, Spotify and Stremio links for the Gateway media tools. The
+gateway copies them at every start, without skills.sh or the network, into
+`~/.agents/skills/`, which Oh My Pi (omp), Codex, OpenCode, Kimi Code and
+DeepSeek read. It also copies them into the active backend's own folder when
+that backend has one (`~/.claude/skills/`, `~/.pi/agent/skills/`, …). A copy
+is rewritten only when the repository version changes, and an older copy in
+another backend's folder is refreshed too. A folder of the same name that you
+created yourself is never overwritten.
+
+`media-playback` can check with TMDB whether a title streams on Netflix in
+your country. To turn that check on, add a TMDB API read access token and your
+two-letter country code (ISO 3166-1, for example `US`) to
+`~/.config/qwaudio/config.env`:
+
+```bash
+TMDB_API_READ_TOKEN=<your TMDB API read access token>
+TMDB_WATCH_REGION=<your country code>
+QWEN_AUDIO_AGENT_ACP_FORWARD_ENV=TMDB_API_READ_TOKEN,TMDB_WATCH_REGION
+```
+
+Without `TMDB_WATCH_REGION`, the backend asks you which country to check.
+The last line is for Oh My Pi (omp) and other generic ACP backends. The
+gateway passes a backend only the environment variables its catalog entry
+allows, and for generic ACP those are `ACP_*` plus the names listed in
+`QWEN_AUDIO_AGENT_ACP_FORWARD_ENV`. Other backends do not receive the token,
+and the skill then skips the check. The TMDB lookup runs `curl`, so in the
+default `native` permission mode the backend may ask you before it runs.
+
 The pinned skills.sh version can be overridden with
 `QWEN_AUDIO_AGENT_SKILLS_CLI_PACKAGE` (for example `skills@latest`). If a
 newly added backend is not yet supported by skills.sh, contribute an agent

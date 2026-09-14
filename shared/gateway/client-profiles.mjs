@@ -25,7 +25,10 @@ export function gatewayReferenceClientCapabilities(clientType = 'web') {
     GatewayClientCapability.SESSION_REPLAY,
     GatewayClientCapability.SESSION_HEARTBEAT,
     ...(clientType === GatewayReferenceClientType.DESKTOP
-      ? [GatewayClientCapability.CLIENT_ACTION_ENTER_SLEEP]
+      ? [
+          GatewayClientCapability.CLIENT_ACTION_ENTER_SLEEP,
+          GatewayClientCapability.CLIENT_ACTION_SHOW_CONVERSATION,
+        ]
       : []),
   ]
 }

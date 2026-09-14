@@ -3,8 +3,11 @@ import test from 'node:test'
 import {
   PERMISSION_RESPONSE_CAPABILITY,
   BACKEND_INPUT_RESPONSE_CAPABILITY,
+  CONTROL_MEDIA_TOOL_NAME,
   ENTER_SLEEP_TOOL_NAME,
   FETCH_URL_TOOL_NAME,
+  MEDIA_PLAYER_CAPABILITY,
+  PLAY_MEDIA_TOOL_NAME,
   RESPOND_PERMISSION_TOOL_NAME,
   WEB_SEARCH_TOOL_NAME,
   frontendToolRegistry,
@@ -70,7 +73,7 @@ test('fixed policy and tool definitions never depend on optional tool names', ()
 test('disabling any optional tool removes its instructions without changing fixed policy', () => {
   const context = {
     frontend: {
-      capabilities: ['web-search', 'url-fetch', 'knowledge', 'recall', 'memory', 'listening.wake_word'],
+      capabilities: ['web-search', 'url-fetch', 'knowledge', 'recall', 'memory', 'listening.wake_word', 'media.player'],
     },
     client: { actions: ['desktop.presence.enter_sleep'] },
   }
@@ -460,4 +463,30 @@ test('enforces the tool loop before invoking a registered handler', async () => 
   assert.equal(limited.executed, false)
   assert.equal(limited.limit.reason, 'call_limit')
   assert.equal(calls, 1)
+})
+
+test('exposes the media tools only when the Gateway has a media player', () => {
+  assert.equal(frontendToolRegistry.isEnabled(PLAY_MEDIA_TOOL_NAME), false)
+  assert.equal(frontendToolRegistry.isEnabled(CONTROL_MEDIA_TOOL_NAME), false)
+  assert.deepEqual(
+    names(frontendTools({ frontend: { capabilities: [MEDIA_PLAYER_CAPABILITY] } })),
+    [...DEFAULT_TOOL_NAMES, PLAY_MEDIA_TOOL_NAME, CONTROL_MEDIA_TOOL_NAME],
+  )
+  assert.equal(buildFrontendToolContext({ mediaPlayer: {} }).capabilities.includes(MEDIA_PLAYER_CAPABILITY), true)
+  assert.equal(buildFrontendToolContext({}).capabilities.includes(MEDIA_PLAYER_CAPABILITY), false)
+  assert.deepEqual(frontendToolRegistry.get(PLAY_MEDIA_TOOL_NAME).policy, {
+    requiredCapabilities: [MEDIA_PLAYER_CAPABILITY],
+  })
+  // pause, resume and pause again in one turn are three real requests.
+  assert.deepEqual(frontendToolRegistry.get(CONTROL_MEDIA_TOOL_NAME).policy, {
+    requiredCapabilities: [MEDIA_PLAYER_CAPABILITY],
+    repeatHandling: 'handler',
+  })
+  const play = frontendToolRegistry.get(PLAY_MEDIA_TOOL_NAME).definition.function.parameters
+  assert.deepEqual(play.required, ['query', 'service'])
+  assert.deepEqual(play.properties.service.enum, ['youtube', 'youtube_music'])
+  const control = frontendToolRegistry.get(CONTROL_MEDIA_TOOL_NAME).definition.function.parameters
+  assert.deepEqual(control.required, ['action'])
+  assert.deepEqual(control.properties.action.enum, ['pause', 'resume', 'stop', 'next', 'previous', 'seek'])
+  assert.equal(control.properties.seconds.type, 'number')
 })

@@ -82,3 +82,36 @@ test('running the open-computer-use runtime through bash is asked about as compu
   broker.respond(events[0].permission.id, 'reject', { ownerId: 'owner' })
   assert.deepEqual(await pending, { outcome: { outcome: 'selected', optionId: 'reject' } })
 })
+
+test('the Gateway media tools are allowed without asking, in every title form Agents use', async () => {
+  const broker = new PermissionBroker({ protocol: 'test', permissionMode: 'native' })
+  const events = []
+  const session = { ownerId: 'owner', onEvent: event => events.push(event) }
+  for (const title of [
+    'qwen_audio_agent_media_play',
+    'mcp__qwen_audio_media__qwen_audio_agent_media_play',
+    'qwen_audio_agent_media_control (qwen_audio_media)',
+  ]) {
+    const pending = broker.request({
+      toolCall: { toolCallId: `call-${title}`, title },
+      options: [
+        { kind: 'allow_once', optionId: 'allow' },
+        { kind: 'reject_once', optionId: 'reject' },
+      ],
+    }, { session })
+    assert.equal(events.length, 0, `${title} asked the user`)
+    assert.deepEqual(await pending, { outcome: { outcome: 'selected', optionId: 'allow' } })
+  }
+})
+
+test('a lookalike media tool name still asks the user', async () => {
+  const broker = new PermissionBroker({ protocol: 'test', permissionMode: 'native' })
+  const events = []
+  const pending = broker.request({
+    toolCall: { title: 'media_play' },
+    options: [{ kind: 'allow_once', optionId: 'allow' }],
+  }, { session: { ownerId: 'owner', onEvent: event => events.push(event) } })
+  assert.equal(events.length, 1)
+  broker.cancelAll()
+  assert.deepEqual(await pending, { outcome: { outcome: 'cancelled' } })
+})

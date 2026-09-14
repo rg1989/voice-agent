@@ -188,6 +188,7 @@
     "server/src/",
     "server/package.json",
     "shared/",
+    "skills/",
     "desktop/src/settings-store.mjs",
     "desktop/src/settings-config.mjs",
     "desktop/src/i18n.mjs",

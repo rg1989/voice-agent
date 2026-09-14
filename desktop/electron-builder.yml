@@ -32,6 +32,7 @@ files:
   - desktop/build/trayTemplate*.png
   - server/src/**/*
   - shared/**/*
+  - skills/**/*
   - web/dist/**/*
   - package.json
   - LICENSE
@@ -61,6 +62,9 @@ mac:
   extendInfo:
     LSUIElement: true
     NSMicrophoneUsageDescription: Qwen Audio Agent 需要使用麦克风进行实时语音对话。
+    # The Gateway runs osascript to play and control Spotify. macOS attributes
+    # those Apple Events to this app and refuses them without this text.
+    NSAppleEventsUsageDescription: Qwen Audio Agent controls the Spotify app to play what you ask for.
   target:
     - dmg
     - zip

@@ -182,10 +182,44 @@ or without a clone:
 curl -fsSL https://raw.githubusercontent.com/rg1989/voice-agent/main/bin/setup | bash -s -- ~/voice-agent-setup.qwsetup
 ```
 
-It installs Node, Bun and Oh My Pi for your user (no admin password), builds the
-app, restores the setup file and starts the gateway at http://127.0.0.1:3101.
-On Linux, if `curl`, `tar` or `unzip` is missing, it installs them with apt or
-dnf, and sudo asks for your password (the `curl` form above needs `curl` first).
+It installs Node, Bun and Oh My Pi for your user. It also installs the tools that
+voice media playback uses: `yt-dlp` and `deno`, plus `playerctl` on Linux and
+`media-control` on macOS (from Homebrew; without Homebrew, install it and run
+setup again). Then it restores the setup file, builds the desktop app, starts the
+gateway at http://127.0.0.1:3101 and opens the app instead of the web page. Setup
+asks for your password only when Linux packages such as `curl`, `tar` or `unzip`
+are missing (`apt-get`, `dnf`, or `pacman` on Arch and Omarchy); the `curl` form
+above needs `curl` first.
+
+Where things go:
+
+- macOS: `~/Applications/Qwen Audio Agent.app`, opened at login by
+  `~/Library/LaunchAgents/com.qwen-audio-agent.desktop.plist`. macOS does not let
+  a login item read `~/Documents`, `~/Desktop`, `~/Downloads` or iCloud Drive, so
+  setup adds the login item only when the checkout is outside those folders (for
+  example `QWAUDIO_DIR=~/qwen-audio-agent`). Otherwise it prints a note and skips it.
+- Linux: the app in `~/.local/opt/qwen-audio-agent`, a launcher entry in
+  `~/.local/share/applications/qwen-audio-agent.desktop` and the command
+  `~/.local/bin/qwen-audio-agent`.
+- Hyprland (Omarchy): window rules for the orb and the media player go in
+  `~/.config/hypr/qwaudio.lua` (`qwaudio.conf` if you use `hyprland.conf`). One
+  added line in your Hyprland config loads that file, and it also opens the app
+  at login.
+- Other Linux desktops: the app opens at login from
+  `~/.config/autostart/qwen-audio-agent.desktop`.
+- `QWAUDIO_STATE_DIR` in `~/.config/qwaudio/config.env`: the gateway that
+  `bin/restart` starts and the desktop app share one state folder, so there is
+  only ever one gateway. Do not also run `qwenaudio gateway install`: its
+  background service would compete with `bin/restart` for the gateway port.
+
+Open the app again with `bin/desktop` (it starts the gateway first when needed),
+or restart only the gateway with `bin/restart`. `QWAUDIO_SETUP_DRY_RUN=1 bin/setup`
+prints what setup would install, write or start, and changes nothing.
+`QWAUDIO_SETUP_NO_DESKTOP=1` installs without the desktop app and opens the web
+page instead. To stop the app from opening at login, delete the LaunchAgent or
+autostart file, or the `hyprland.start` block (or the `exec-once` line) in the
+Hyprland rules file. Running setup again adds it back.
+
 Conversation history, edits to per-voice personas and the Claude Code login do
 not move; run `claude` once if you use it as the brain. Computer control needs
 macOS 14+, or on Linux a desktop session with AT-SPI accessibility.

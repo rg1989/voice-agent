@@ -1,7 +1,16 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { homedir } from 'node:os'
-import { resolve } from 'node:path'
+import { dirname, relative, resolve } from 'node:path'
 import {
   backendSkillsSpec,
   skillsInstallerAgents,
@@ -186,6 +195,98 @@ export function ensureBackendSkills({
     installed,
     failures,
   }
+}
+
+// Skills that ship inside this repository (skills/<name>/SKILL.md), such as
+// media-playback for the Gateway media tools. They are copied with plain fs at
+// Gateway start, never through skills.sh: no network, and no lockfile entry
+// that would pin a repository path. Targets:
+// - ~/.agents/skills, the open-standard folder. omp (Oh My Pi) reads it through
+//   its .agents provider, and so do codex, opencode, kimi and deepseek.
+//   ~/.omp/agent/skills is avoided on purpose: bin/setup-bundle.mjs carries it,
+//   so an import could roll the skill back to an older copy.
+// - the active backend's own folder, when it declares a skills.sh installer.
+// Each copy carries a marker with the content hash. The marker is created
+// empty before the files are copied and gets the hash last, so an incomplete
+// copy is still ours and is rewritten. A folder without the
+// marker belongs to the user and is never touched; a marked copy is rewritten
+// only when the repository version changed. Marked copies are refreshed in
+// every known backend folder, whatever backend is active: omp ranks an
+// opted-in ~/.claude above ~/.agents, so a stale copy left by an earlier
+// Claude Code run would hide the current one. New copies go only to the two
+// targets above. Reads use readFileSync/readdirSync so sources inside the
+// desktop app's asar archive work too.
+const BUNDLED_SKILLS_DIRECTORY = 'skills'
+const BUNDLED_SKILL_MARKER = '.qwaudio-bundled'
+const UNIVERSAL_SKILLS_DIRECTORY = '.agents/skills'
+
+function skillFiles(directory, base = directory) {
+  return readdirSync(directory).sort().flatMap(name => {
+    const path = resolve(directory, name)
+    return statSync(path).isDirectory()
+      ? skillFiles(path, base)
+      : [relative(base, path)]
+  })
+}
+
+export function ensureBundledSkills({
+  root,
+  protocol,
+  homeDirectory = homedir(),
+} = {}) {
+  const installed = []
+  const skipped = []
+  const source = resolve(root, BUNDLED_SKILLS_DIRECTORY)
+  if (!existsSync(source)) return { installed, skipped }
+  const installer = backendSkillsSpec(protocol)?.installer
+  const createIn = new Set([
+    UNIVERSAL_SKILLS_DIRECTORY,
+    INSTALLER_SKILLS_DIRECTORIES[installer],
+  ].filter(Boolean))
+  const targets = [...new Set([
+    ...createIn,
+    ...Object.values(INSTALLER_SKILLS_DIRECTORIES),
+  ])]
+  for (const name of readdirSync(source).sort()) {
+    const skillSource = resolve(source, name)
+    if (!existsSync(resolve(skillSource, 'SKILL.md'))) continue
+    const files = skillFiles(skillSource)
+    const hash = createHash('sha256')
+    for (const file of files) {
+      hash.update(file).update('\0').update(readFileSync(resolve(skillSource, file))).update('\0')
+    }
+    const digest = hash.digest('hex')
+    for (const directory of targets) {
+      const target = resolve(homeDirectory, directory, name)
+      const marker = resolve(target, BUNDLED_SKILL_MARKER)
+      if (existsSync(target)) {
+        if (!existsSync(marker)) {
+          // Reported only where a copy would have been created.
+          if (createIn.has(directory)) skipped.push(target)
+          continue
+        }
+        if (readFileSync(marker, 'utf8').trim() === digest) continue
+        rmSync(target, { recursive: true, force: true })
+      } else if (!createIn.has(directory)) {
+        continue
+      }
+      // Mark the folder as ours before any file is written, and write the
+      // digest only after the last one. A copy that fails partway (ENOSPC,
+      // EACCES, a killed start) keeps a marker that does not match, so the
+      // next start deletes and rewrites it instead of taking it for a user
+      // folder.
+      mkdirSync(target, { recursive: true })
+      writeFileSync(marker, '')
+      for (const file of files) {
+        const destination = resolve(target, file)
+        mkdirSync(dirname(destination), { recursive: true })
+        writeFileSync(destination, readFileSync(resolve(skillSource, file)))
+      }
+      writeFileSync(marker, `${digest}\n`)
+      installed.push(target)
+    }
+  }
+  return { installed, skipped }
 }
 
 // 供 launcher 拼“本地实际存在的后台 ∪ 当前配置后台”名单：避免为用户

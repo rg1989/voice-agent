@@ -70,6 +70,8 @@ export function resolveDisabledFrontendTools(env = process.env) {
       ? ['notes'] : []),
     ...(!featureEnabled(env.QWEN_AUDIO_RECALL_TOOL_ENABLED)
       ? ['recall'] : []),
+    ...(!featureEnabled(env.QWEN_AUDIO_MEDIA_TOOLS_ENABLED)
+      ? ['play_media', 'control_media'] : []),
   ]
 }
 
@@ -617,8 +619,8 @@ export const config = {
   voiceSummaryOnly: String(
     process.env.QWEN_AUDIO_VOICE_SUMMARY_ONLY || 'false'
   ).toLowerCase() === 'true',
-  // Boot seed for the live settings store (listeningMode, wakeWord,
-  // followUpSeconds, cameraEnabled); later changes apply without a restart.
+  // Boot seed for the live settings store (listening, wake word, follow-up,
+  // camera and media settings); later changes apply without a restart.
   ...liveSettingsFromEnvironment(process.env),
   reminderMaxPerOwner: numberSetting(
     process.env.QWEN_AUDIO_AGENT_REMINDER_MAX_PER_OWNER,

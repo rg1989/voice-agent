@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   AgentClient,
   createAgentClient,
+  setAgentMediaPlayer,
 } from '../src/backend/adapters/agent-client.mjs'
 
 function fakeAcpClient() {
@@ -189,4 +190,47 @@ test('AgentClient owns exactly one injected backend instance', () => {
     () => new AgentClient(),
     /AgentClient adapter must be an object/,
   )
+})
+
+test('hands the Gateway media player to a backend adapter created before the player existed', async () => {
+  const player = {
+    async play() { return { status: 'playing' } },
+    async stop() { return { status: 'stopped' } },
+    async control(action) { return { status: 'ok', action } },
+  }
+  setAgentMediaPlayer(null)
+  // The shared adapter is built first, as when the knowledge module calls
+  // agent.describe() while the Gateway application is still being created.
+  const client = createAgentClient({
+    protocol: 'opencode',
+    backends: {
+      opencode: { baseUrl: 'http://opencode.test', directory: '/workspace' },
+    },
+    sessionStatePath: null,
+    acpClient: fakeAcpClient(),
+    sessionToolServer: {
+      ...fakeToolServer(),
+      registerServer: async registration => ({
+        descriptor: {
+          type: 'http',
+          name: registration.name,
+          url: `http://127.0.0.1${registration.path}`,
+          headers: [],
+        },
+        release() {},
+      }),
+    },
+  })
+  const serverNames = async key => (
+    (await client.adapter.gatewayMcpFor(key)).servers.map(server => server.name)
+  )
+  try {
+    assert.equal((await serverNames('coordinator:before')).includes('qwen_audio_media'), false)
+    setAgentMediaPlayer(player)
+    assert.ok((await serverNames('coordinator:after')).includes('qwen_audio_media'))
+    assert.equal(client.adapter.mediaToolsInstance().player, player)
+  } finally {
+    setAgentMediaPlayer(null)
+    await client.close()
+  }
 })

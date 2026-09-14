@@ -186,6 +186,7 @@ if (isMain) {
     'server/src/core/package-version.mjs',
     'server/src/index.mjs',
     'shared/runtime-environment.mjs',
+    'skills/media-playback/SKILL.md',
     'tui/src/index.mjs',
     'tui/src/input-parts.mjs',
     'tui/src/playback.mjs',

@@ -215,9 +215,10 @@ await orb.load()
 `GET /api/settings` 返回已保存的 `brain`（后台 Agent）、`folder`（其工作目录）、
 `voice`、`persona`、`personaVoice`、`computerUse`、`webTools`、`summaryOnly`、
 `turnThreshold`、`turnSilenceMs`、`listeningMode`、`wakeWord`、`followUpSeconds`、
-`cameraEnabled` 与 `roboticVoice`，以及选项列表 `brains`、`voices`、
-`computerUseOptions`、`listeningModes`、`wakeWords`、`turnDefaults` 与
-`followUpDefaults`。这些值来自配置目录中的 `config.env`。`persona` 是
+`cameraEnabled`、`roboticVoice`、`mediaBrowser`、`mediaReturnToAssistant` 与
+`mediaPauseWhileTalking`，以及选项列表 `brains`、`voices`、
+`computerUseOptions`、`listeningModes`、`wakeWords`、`turnDefaults`、
+`followUpDefaults` 与 `mediaBrowserOptions`（每个浏览器带 `installed`）。这些值来自配置目录中的 `config.env`。`persona` 是
 `personaVoice` 所指音色的角色文本。
 
 `POST /api/settings` 接收只包含待修改字段的 JSON 对象。Gateway 在写入文件前校验全部字段：
@@ -232,7 +233,8 @@ await orb.load()
 - `turnThreshold`：0 到 1 之间的数字。
 - `turnSilenceMs`：200 到 6000 之间的数字。
 - `followUpSeconds`：0 到 10 之间的数字。
-- `webTools`、`summaryOnly`、`cameraEnabled` 与 `roboticVoice`：布尔值。
+- `mediaBrowser`：`auto`、`chrome`、`edge`、`chromium` 或 `brave`。
+- `webTools`、`summaryOnly`、`cameraEnabled`、`roboticVoice`、`mediaReturnToAssistant` 与 `mediaPauseWhileTalking`：布尔值。
 
 超出范围的数字会被限制到范围内，不是数字的值返回 `400`。Gateway 忽略未知字段、
 空的 `brain` 或 `voice`，以及类型不符的文本或布尔字段。响应为
@@ -241,7 +243,7 @@ await orb.load()
 
 | Gateway 重启 | 字段 |
 | --- | --- |
-| 不需要 | `voice`、`persona`、`listeningMode`、`wakeWord`、`followUpSeconds`、`cameraEnabled`、`roboticVoice` |
+| 不需要 | `voice`、`persona`、`listeningMode`、`wakeWord`、`followUpSeconds`、`cameraEnabled`、`roboticVoice`、`mediaBrowser`、`mediaReturnToAssistant`、`mediaPauseWhileTalking` |
 | 需要 | `brain`、`folder`、`computerUse`、`webTools`、`summaryOnly`、`turnThreshold`、`turnSilenceMs` |
 
 Gateway 把 `persona` 写入配置目录下的 `personas/<voice>.md`；如果部署设置了自己的

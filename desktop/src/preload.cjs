@@ -13,6 +13,14 @@ contextBridge.exposeInMainWorld('qwenAudioAgentDesktop', {
     'qwen-audio-agent:task-card-count',
     count,
   ),
+  setCaptionVisible: visible => ipcRenderer.send(
+    'qwen-audio-agent:caption-visible',
+    visible === true,
+  ),
+  setMediaActive: active => ipcRenderer.send(
+    'qwen-audio-agent:media-active',
+    active === true,
+  ),
   onTaskCardPlacement: callback => {
     if (typeof callback !== 'function') return () => {}
     const listener = (_event, layout) => {

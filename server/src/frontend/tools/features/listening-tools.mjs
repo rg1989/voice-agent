@@ -65,7 +65,7 @@ export const listeningToolEntries = [
 
 // Both tools are silent: the output creates no response, and the response
 // that called them is terminal so it never waits for a tool follow-up.
-function silentOutput(runtime, { callId, turnId, callContext, event }, output) {
+export function silentOutput(runtime, { callId, turnId, callContext, event }, output) {
   runtime.markTerminalToolResponse(callContext?.responseId || event?.response_id)
   return runtime.sendOutput(callId, output, turnId, null, { createResponse: false })
 }

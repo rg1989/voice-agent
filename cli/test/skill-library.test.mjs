@@ -1,11 +1,20 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import fs, {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
+import { syncBuiltinESMExports } from 'node:module'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import {
   addSkills,
   ensureBackendSkills,
+  ensureBundledSkills,
   listSkills,
   presentInstallerAgents,
   readSkillLock,
@@ -309,5 +318,217 @@ test('builds the present-backend installer list with fallback', () => {
   assert.deepEqual(
     presentInstallerAgents({ readyBackends: [], currentProtocol: '' }).sort(),
     [...skillsInstallerAgents()].sort(),
+  )
+})
+
+const repositoryRoot = resolve(import.meta.dirname, '../..')
+
+test('the bundled media-playback skill names itself and covers each service and the privacy rules', () => {
+  const text = readFileSync(resolve(repositoryRoot, 'skills/media-playback/SKILL.md'), 'utf8')
+  const frontmatter = text.match(/^---\nname: ([^\n]+)\ndescription: ([^\n]+)\n---\n/)
+  assert.ok(frontmatter, 'SKILL.md starts with name and description frontmatter')
+  assert.equal(frontmatter[1], 'media-playback')
+  assert.ok(frontmatter[2].length <= 1024)
+  for (const required of [
+    'qwen_audio_agent_media_play',
+    'qwen_audio_agent_media_control',
+    'TMDB_API_READ_TOKEN',
+    'URL reading tool',
+    'may ask the user for permission',
+    'TMDB_WATCH_REGION',
+    'results.<TMDB_WATCH_REGION>.flatrate',
+    'ask the user which country',
+    'P1874',
+    'https://www.netflix.com/watch/',
+    'open.spotify.com',
+    'spotify:<type>:<id>',
+    'Never use the Spotify Web API',
+    'v3-cinemeta.strem.io',
+    'stremio:///detail/',
+    'share the link',
+    'Never read browser cookies',
+  ]) {
+    assert.ok(text.includes(required), `SKILL.md mentions ${required}`)
+  }
+  // The skill is public: the Netflix region is a setting, never one country.
+  assert.equal(/results\.[A-Z]{2}\./.test(text), false, 'SKILL.md reads no fixed region code')
+  assert.ok(/^## Netflix\n/m.test(text), 'the Netflix heading names no country')
+})
+
+function bundledRoot(skills) {
+  const root = mkdtempSync(join(tmpdir(), 'qwaudio-bundled-root-'))
+  for (const [name, files] of Object.entries(skills)) {
+    for (const [file, content] of Object.entries(files)) {
+      const path = resolve(root, 'skills', name, file)
+      mkdirSync(dirname(path), { recursive: true })
+      writeFileSync(path, content)
+    }
+  }
+  return root
+}
+
+test('copies repository skills into ~/.agents/skills, which omp reads, and skips unchanged copies', () => {
+  const root = bundledRoot({
+    'media-playback': {
+      'SKILL.md': '---\nname: media-playback\n---\n',
+      'references/netflix.md': 'ids',
+    },
+  })
+  const homeDirectory = lockFixture(null)
+  const target = resolve(homeDirectory, '.agents/skills/media-playback')
+  assert.deepEqual(
+    ensureBundledSkills({ root, protocol: 'acp', homeDirectory }),
+    { installed: [target], skipped: [] },
+  )
+  assert.equal(readFileSync(resolve(target, 'SKILL.md'), 'utf8'), '---\nname: media-playback\n---\n')
+  assert.equal(readFileSync(resolve(target, 'references/netflix.md'), 'utf8'), 'ids')
+  // Never ~/.omp/agent/skills: setup-bundle imports would roll it back.
+  assert.equal(existsSync(resolve(homeDirectory, '.omp')), false)
+  assert.deepEqual(
+    ensureBundledSkills({ root, protocol: 'acp', homeDirectory }),
+    { installed: [], skipped: [] },
+  )
+})
+
+test('also installs into the active backend\'s own skill folder, once per folder', () => {
+  const root = bundledRoot({ 'media-playback': { 'SKILL.md': 'v1' } })
+  const claudeHome = lockFixture(null)
+  assert.deepEqual(
+    ensureBundledSkills({ root, protocol: 'claude', homeDirectory: claudeHome }).installed,
+    [
+      resolve(claudeHome, '.agents/skills/media-playback'),
+      resolve(claudeHome, '.claude/skills/media-playback'),
+    ],
+  )
+  // Codex already reads ~/.agents/skills.
+  const codexHome = lockFixture(null)
+  assert.deepEqual(
+    ensureBundledSkills({ root, protocol: 'codex', homeDirectory: codexHome }).installed,
+    [resolve(codexHome, '.agents/skills/media-playback')],
+  )
+})
+
+test('rewrites its own copy when the repository skill changes and leaves a user folder of the same name alone', () => {
+  const root = bundledRoot({ 'media-playback': { 'SKILL.md': 'v1', 'old.md': 'removed later' } })
+  const homeDirectory = lockFixture(null)
+  const target = resolve(homeDirectory, '.agents/skills/media-playback')
+  ensureBundledSkills({ root, protocol: 'acp', homeDirectory })
+  writeFileSync(resolve(root, 'skills/media-playback/SKILL.md'), 'v2')
+  rmSync(resolve(root, 'skills/media-playback/old.md'))
+  assert.deepEqual(ensureBundledSkills({ root, protocol: 'acp', homeDirectory }).installed, [target])
+  assert.equal(readFileSync(resolve(target, 'SKILL.md'), 'utf8'), 'v2')
+  assert.equal(existsSync(resolve(target, 'old.md')), false)
+
+  const userHome = lockFixture(null)
+  placeSkill(userHome, '.agents/skills', 'media-playback')
+  assert.deepEqual(
+    ensureBundledSkills({ root, protocol: 'acp', homeDirectory: userHome }),
+    { installed: [], skipped: [resolve(userHome, '.agents/skills/media-playback')] },
+  )
+  assert.equal(
+    readFileSync(resolve(userHome, '.agents/skills/media-playback/SKILL.md'), 'utf8'),
+    '---\nname: x\n---\n',
+  )
+})
+
+test('does nothing without a skills folder and ignores folders without SKILL.md', () => {
+  const homeDirectory = lockFixture(null)
+  const empty = mkdtempSync(join(tmpdir(), 'qwaudio-bundled-empty-'))
+  assert.deepEqual(
+    ensureBundledSkills({ root: empty, protocol: 'acp', homeDirectory }),
+    { installed: [], skipped: [] },
+  )
+  const notes = bundledRoot({ drafts: { 'README.md': 'not a skill' } })
+  assert.deepEqual(
+    ensureBundledSkills({ root: notes, protocol: 'acp', homeDirectory }),
+    { installed: [], skipped: [] },
+  )
+  assert.equal(existsSync(resolve(homeDirectory, '.agents/skills')), false)
+})
+
+test('installs the media-playback skill that ships in this repository', () => {
+  const homeDirectory = lockFixture(null)
+  ensureBundledSkills({ root: repositoryRoot, protocol: 'acp', homeDirectory })
+  assert.equal(
+    readFileSync(resolve(homeDirectory, '.agents/skills/media-playback/SKILL.md'), 'utf8'),
+    readFileSync(resolve(repositoryRoot, 'skills/media-playback/SKILL.md'), 'utf8'),
+  )
+})
+
+test('refreshes its stale copy in another backend\'s folder, which omp ranks above ~/.agents', () => {
+  const root = bundledRoot({ 'media-playback': { 'SKILL.md': 'v1' } })
+  const homeDirectory = lockFixture(null)
+  ensureBundledSkills({ root, protocol: 'claude', homeDirectory })
+  writeFileSync(resolve(root, 'skills/media-playback/SKILL.md'), 'v2')
+  assert.deepEqual(
+    ensureBundledSkills({ root, protocol: 'acp', homeDirectory }),
+    {
+      installed: [
+        resolve(homeDirectory, '.agents/skills/media-playback'),
+        resolve(homeDirectory, '.claude/skills/media-playback'),
+      ],
+      skipped: [],
+    },
+  )
+  assert.equal(
+    readFileSync(resolve(homeDirectory, '.claude/skills/media-playback/SKILL.md'), 'utf8'),
+    'v2',
+  )
+  // Folders of backends that never had a copy are not created.
+  assert.equal(existsSync(resolve(homeDirectory, '.pi')), false)
+  assert.equal(existsSync(resolve(homeDirectory, '.qwen')), false)
+
+  // A user folder of the same name in another backend's folder is neither
+  // touched nor reported.
+  placeSkill(homeDirectory, '.qwen/skills', 'media-playback')
+  assert.deepEqual(
+    ensureBundledSkills({ root, protocol: 'acp', homeDirectory }),
+    { installed: [], skipped: [] },
+  )
+  assert.equal(
+    readFileSync(resolve(homeDirectory, '.qwen/skills/media-playback/SKILL.md'), 'utf8'),
+    '---\nname: x\n---\n',
+  )
+})
+
+test('marks its copy before writing files, so a copy that fails partway is rewritten on the next start', () => {
+  const root = bundledRoot({
+    'media-playback': { 'SKILL.md': 'v1', 'references/netflix.md': 'ids' },
+  })
+  const homeDirectory = lockFixture(null)
+  const target = resolve(homeDirectory, '.agents/skills/media-playback')
+  const realWriteFileSync = fs.writeFileSync
+  fs.writeFileSync = (path, ...rest) => {
+    if (String(path).endsWith('netflix.md')) {
+      throw Object.assign(new Error('ENOSPC: no space left on device'), { code: 'ENOSPC' })
+    }
+    return realWriteFileSync(path, ...rest)
+  }
+  syncBuiltinESMExports()
+  try {
+    assert.throws(() => ensureBundledSkills({ root, protocol: 'acp', homeDirectory }), /ENOSPC/)
+  } finally {
+    fs.writeFileSync = realWriteFileSync
+    syncBuiltinESMExports()
+  }
+  assert.equal(existsSync(resolve(target, 'SKILL.md')), true)
+  assert.equal(existsSync(resolve(target, 'references/netflix.md')), false)
+  assert.deepEqual(
+    ensureBundledSkills({ root, protocol: 'acp', homeDirectory }),
+    { installed: [target], skipped: [] },
+  )
+  assert.equal(readFileSync(resolve(target, 'references/netflix.md'), 'utf8'), 'ids')
+
+  // A marked folder whose marker holds a wrong digest and that lacks a file.
+  writeFileSync(resolve(target, '.qwaudio-bundled'), 'wrong\n')
+  rmSync(resolve(target, 'references'), { recursive: true })
+  assert.deepEqual(
+    ensureBundledSkills({ root, protocol: 'acp', homeDirectory }),
+    { installed: [target], skipped: [] },
+  )
+  assert.equal(readFileSync(resolve(target, 'references/netflix.md'), 'utf8'), 'ids')
+  assert.deepEqual(
+    ensureBundledSkills({ root, protocol: 'acp', homeDirectory }),
+    { installed: [], skipped: [] },
   )
 })

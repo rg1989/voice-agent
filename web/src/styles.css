@@ -610,6 +610,66 @@ header .ghost.active { color: white; border-color: #785cf480; background: #785cf
   padding: 8px 8px 6px;
 }
 .desktop-task-stack::-webkit-scrollbar { display: none; }
+/* Keep height and lift in sync with DESKTOP_CAPTION_HEIGHT and
+   DESKTOP_TASK_STACK_LIFT in desktop/src/desktop-surface-layout.mjs. */
+.desktop-caption {
+  flex: 0 0 50px;
+  align-self: stretch;
+  min-width: 0;
+  height: 50px;
+  margin: -14px 8px 0;
+  padding: 7px 12px;
+  overflow: hidden;
+  border-radius: 14px;
+  color: #f3f1fa;
+  background:
+    linear-gradient(135deg, #25232ce8, #15161ce8),
+    #17181e;
+  pointer-events: none;
+  animation: desktop-task-in .22s ease-out;
+  transition: opacity .3s ease;
+}
+.desktop-gallery-shell.tasks-above .desktop-caption {
+  margin: 0 8px -14px;
+}
+.desktop-caption.fading { opacity: 0; }
+.desktop-caption-state {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #898692;
+  font-size: 10px;
+  line-height: 1.25;
+}
+.desktop-caption-state i {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #9a84f6;
+  box-shadow: 0 0 8px #9a84f6a6;
+}
+.desktop-caption.working .desktop-caption-state i {
+  background: #efb569;
+  box-shadow: 0 0 8px #efb56980;
+}
+.desktop-caption.replying .desktop-caption-state i {
+  background: #61d5aa;
+  box-shadow: 0 0 8px #61d5aa80;
+}
+.desktop-caption p {
+  margin: 3px 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.desktop-gallery-shell.has-caption .desktop-task-stack { margin-top: 0; }
+.desktop-gallery-shell.has-caption.tasks-above .desktop-task-stack {
+  margin-bottom: 0;
+}
 .desktop-gallery-shell .desktop-task-card {
   position: relative;
   flex: 0 0 54px;
@@ -1639,6 +1699,7 @@ article.user .message-body .inline-code { background: #5e44c9; color: #f0eaff; }
   .goo .fill,
   .conversation-turn,
   .agent-task,
+  .desktop-caption,
   .desktop-task-card,
   .desktop-task-progress::after,
   .task-spinner {

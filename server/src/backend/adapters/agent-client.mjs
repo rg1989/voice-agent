@@ -85,9 +85,21 @@ export class AgentClient {
   }
 }
 
+// The Gateway application's one MediaPlayer. The shared backend adapter can
+// be created before the application creates its player (the knowledge module
+// calls agent.describe() while the application is built), so adapters get a
+// function that reads the current player when a Session first needs it.
+let agentMediaPlayer = null
+
+export function setAgentMediaPlayer(player) {
+  agentMediaPlayer = player || null
+}
+
 export function createAgentClient(options = {}) {
   return new AgentClient({
-    adapter: createAcpBackendAdapter(options),
+    adapter: createAcpBackendAdapter(options.mediaPlayer === undefined
+      ? { ...options, mediaPlayer: () => agentMediaPlayer }
+      : options),
   })
 }
 

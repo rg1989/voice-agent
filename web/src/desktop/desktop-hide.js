@@ -62,17 +62,34 @@ export function desktopWorkSettled({
   )
 }
 
+// Services that play in the player browser, with a video on screen. Spotify
+// plays audio in its own app and stays active until it is stopped, so it must
+// not pin the orb above everything.
+const ON_SCREEN_MEDIA_SERVICES = new Set(['youtube', 'youtube_music', 'netflix'])
+
+// The one client-side reading of a media.state: playback the orb must stay
+// shown and raised over. The Gateway's own active flag stays as it is for the
+// bridge and returning to the assistant.
+export function mediaOnScreen(state) {
+  return state?.active === true && ON_SCREEN_MEDIA_SERVICES.has(state.service)
+}
+
+// While a video is on screen (mediaOnScreen) the orb stays shown: the caption
+// and the raised window level need a visible window, and waking a hidden orb
+// takes focus from the player.
 export function desktopCanHide({
   settled,
   connectionState,
   visualError = false,
   lifecycle = 'active',
+  mediaActive = false,
 } = {}) {
   return (
     lifecycle === 'active'
     && settled === true
     && connectionState === 'connected'
     && visualError !== true
+    && mediaActive !== true
   )
 }
 
@@ -96,12 +113,47 @@ export function desktopHideDeadline({
 // （随后的 voice.wake 会重新唤醒 Gateway）。
 export const DESKTOP_WAKE_GRACE_MS = 5000
 
+async function showDesktopConversation({ bridge, onSurface }) {
+  try {
+    const result = await bridge.setSurface('panel')
+    const mode = result?.mode === 'panel' ? 'panel' : 'orb'
+    onSurface(mode)
+    if (mode !== 'panel') {
+      return {
+        status: 'failed',
+        error: {
+          code: 'desktop_panel_incomplete',
+          message: 'Desktop did not open the conversation panel',
+        },
+      }
+    }
+    return { status: 'completed', output: { mode } }
+  } catch (error) {
+    return {
+      status: 'failed',
+      error: {
+        code: 'desktop_panel_failed',
+        message: String(error?.message || error).slice(0, 500),
+      },
+    }
+  }
+}
+
 export async function performDesktopClientAction(event, {
   desktop = false,
   bridge,
   onLifecycle = () => {},
+  onSurface = () => {},
 } = {}) {
   if (event?.type !== GatewayClientProtocolEvent.CLIENT_ACTION_REQUEST) return null
+  if (
+    desktop
+    && event.name === GatewayClientActionName.SHOW_CONVERSATION
+    && typeof bridge?.setSurface === 'function'
+  ) {
+    // The host wakes a hidden orb and focuses the panel (main.mjs onSetSurface).
+    return showDesktopConversation({ bridge, onSurface })
+  }
   if (
     !desktop
     || event.name !== GatewayClientActionName.ENTER_SLEEP
@@ -147,9 +199,11 @@ export async function applyDesktopClientState(event, {
   onLifecycle = () => {},
   lastWakeAt = 0,
   now = Date.now(),
+  mediaActive = false,
 } = {}) {
   if (
     !desktop
+    || mediaActive === true
     || event?.type !== GatewayServerEvent.CLIENT_STATE
     || event.state !== 'sleeping'
     || typeof bridge?.enterHide !== 'function'

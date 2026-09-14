@@ -24,6 +24,7 @@ import {
   createComputerUseLifecycle,
 } from './builtin-mcp.mjs'
 import { ComputerUseGate } from './computer-use-gate.mjs'
+import { MediaTools } from './media-tools.mjs'
 import { COMPUTER_USE_AUTHORIZATION_CATEGORY } from '../../../core/work-authorization.mjs'
 import { BackendRuntimeState } from './runtime-state.mjs'
 import { KeyedSerialExecutor } from './keyed-serial-executor.mjs'
@@ -144,6 +145,7 @@ export class AcpBackendAdapter {
     nativeDelegationAdapter,
     computerUse = computerUseEnabled() ? computerUseBinPath() : null,
     computerUseApproval = computerUseMode(),
+    mediaPlayer = null,
   } = {}) {
     this.protocol = protocol
     this.root = root
@@ -193,7 +195,12 @@ export class AcpBackendAdapter {
           onLaunch: () => this.computerUseLifecycle.markUsed(),
         })
       : null
-    this.computerUseRegistrations = new Map()
+    // Media playback needs no approval, so it is offered to every Session that
+    // accepts session MCP servers, with the same per-Session token lifecycle.
+    // A player or a function returning the current one; see mediaToolsInstance.
+    this.mediaPlayer = mediaPlayer
+    this.mediaTools = null
+    this.gatewayMcpRegistrations = new Map()
     this.permissionBroker = new PermissionBroker({
       protocol: this.protocol,
       permissionMode: this.permissionMode,
@@ -575,42 +582,70 @@ export class AcpBackendAdapter {
     return outcome.optionId === 'allow' ? 'allowed' : 'denied'
   }
 
-  // One token per Session. A call reads that Session's current task and prompt
-  // scope when it arrives, so it cannot be attributed to another run the same
-  // owner has in flight.
-  async computerUseFor(key) {
-    if (!this.computerUse) return { servers: [], bind() {} }
-    let entry = this.computerUseRegistrations.get(key)
+  // The Gateway application creates its player after the shared adapter may
+  // already exist (the knowledge module calls agent.describe() while the
+  // application is built), so the player is read when a Session first needs
+  // the media tools, not in the constructor.
+  mediaToolsInstance() {
+    if (this.mediaTools) return this.mediaTools
+    if (
+      this.profile.sessionMcp === false
+      || typeof this.sessionToolServer.registerServer !== 'function'
+    ) return null
+    const player = typeof this.mediaPlayer === 'function'
+      ? this.mediaPlayer()
+      : this.mediaPlayer
+    if (player) this.mediaTools = new MediaTools({ player })
+    return this.mediaTools
+  }
+
+  // One token per Session for each Gateway-owned MCP server (computer control,
+  // media playback). A call reads that Session's current task and prompt scope
+  // when it arrives, so it cannot be attributed to another run the same owner
+  // has in flight.
+  async gatewayMcpFor(key) {
+    let entry = this.gatewayMcpRegistrations.get(key)
     if (!entry) {
       const holder = { session: null }
-      const registration = await this.computerUse.register(
-        this.sessionToolServer,
-        () => holder.session,
-      )
-      entry = { holder, registration }
-      this.computerUseRegistrations.set(key, entry)
+      const resolveSession = () => holder.session
+      const registrations = []
+      const mediaTools = this.mediaToolsInstance()
+      try {
+        if (this.computerUse) {
+          registrations.push(await this.computerUse.register(this.sessionToolServer, resolveSession))
+        }
+        if (mediaTools) {
+          registrations.push(await mediaTools.register(this.sessionToolServer, resolveSession))
+        }
+      } catch (error) {
+        for (const registration of registrations) registration.release()
+        throw error
+      }
+      if (!registrations.length) return { servers: [], bind() {} }
+      entry = { holder, registrations }
+      this.gatewayMcpRegistrations.set(key, entry)
     }
     return {
-      servers: [entry.registration.descriptor],
+      servers: entry.registrations.map(registration => registration.descriptor),
       bind: session => { entry.holder.session = session },
     }
   }
 
-  releaseComputerUse(key) {
-    const entry = this.computerUseRegistrations.get(key)
-    this.computerUseRegistrations.delete(key)
-    entry?.registration.release()
+  releaseGatewayMcp(key) {
+    const entry = this.gatewayMcpRegistrations.get(key)
+    this.gatewayMcpRegistrations.delete(key)
+    for (const registration of entry?.registrations || []) registration.release()
   }
 
-  rekeyComputerUse(from, to) {
-    const entry = this.computerUseRegistrations.get(from)
+  rekeyGatewayMcp(from, to) {
+    const entry = this.gatewayMcpRegistrations.get(from)
     if (!entry) return
-    this.computerUseRegistrations.delete(from)
-    if (this.computerUseRegistrations.has(to)) {
-      entry.registration.release()
+    this.gatewayMcpRegistrations.delete(from)
+    if (this.gatewayMcpRegistrations.has(to)) {
+      for (const registration of entry.registrations) registration.release()
       return
     }
-    this.computerUseRegistrations.set(to, entry)
+    this.gatewayMcpRegistrations.set(to, entry)
   }
 
   async handleElicitation(params, { signal, session } = {}) {
@@ -829,22 +864,22 @@ export class AcpBackendAdapter {
   async startProjectSession(run, { prompt, title }) {
     const cwd = clean(run.cwd) || this.directory
     const startKey = `project-start:${randomUUID()}`
-    const computerUse = await this.computerUseFor(startKey)
+    const gatewayMcp = await this.gatewayMcpFor(startKey)
     let session
     try {
       session = await this.client.newSession({
         cwd,
-        mcpServers: computerUse.servers,
+        mcpServers: gatewayMcp.servers,
         ownerId: run.ownerId,
         role: 'project',
       })
     } catch (error) {
-      this.releaseComputerUse(startKey)
+      this.releaseGatewayMcp(startKey)
       throw error
     }
-    computerUse.bind(session)
-    // A later resume of this Session reuses the same registration.
-    this.rekeyComputerUse(startKey, `project:${session.sessionId}`)
+    gatewayMcp.bind(session)
+    // A later resume of this Session reuses the same registrations.
+    this.rekeyGatewayMcp(startKey, `project:${session.sessionId}`)
     this.rememberProjectSession({
       ...session,
       cwd,
@@ -894,14 +929,14 @@ export class AcpBackendAdapter {
         { protocol: this.protocol },
       )
     }
-    const computerUse = await this.computerUseFor(`project:${clean(sessionId)}`)
+    const gatewayMcp = await this.gatewayMcpFor(`project:${clean(sessionId)}`)
     const session = await this.client.resumeSession(clean(sessionId), {
       cwd,
-      mcpServers: computerUse.servers,
+      mcpServers: gatewayMcp.servers,
       ownerId: run.ownerId,
       role: 'project',
     })
-    computerUse.bind(session)
+    gatewayMcp.bind(session)
     this.rememberProjectSession({
       ...existing,
       ...session,
@@ -1069,13 +1104,13 @@ export class AcpBackendAdapter {
     // because some Agents cache the first MCP connection of a Session. A call an
     // Agent sends after its turn ended fails the gate's scope check; a per-turn
     // token would be stricter but breaks those Agents.
-    const computerUse = await this.computerUseFor(`coordinator:${key}`)
+    const gatewayMcp = await this.gatewayMcpFor(`coordinator:${key}`)
     const mcpServers = [
       ...(registration ? [registration.descriptor] : []),
-      ...computerUse.servers,
+      ...gatewayMcp.servers,
     ]
     const session = await this.ensureCoordinatorSession(ownerId, mcpServers)
-    computerUse.bind(session)
+    gatewayMcp.bind(session)
     const permissionScopeId = `prompt_${randomUUID()}`
     run.sessionId = session.sessionId
     run.cwd = clean(session.cwd) || this.directory
@@ -1332,21 +1367,21 @@ export class AcpBackendAdapter {
     onEvent,
   } = {}) {
     await this.start({ signal })
-    const computerUseKey = `utility:${randomUUID()}`
-    const computerUse = await this.computerUseFor(computerUseKey)
+    const gatewayMcpKey = `utility:${randomUUID()}`
+    const gatewayMcp = await this.gatewayMcpFor(gatewayMcpKey)
     let session
     try {
       session = await this.client.newSession({
         cwd: this.directory,
-        mcpServers: computerUse.servers,
+        mcpServers: gatewayMcp.servers,
         ownerId,
         role: 'utility',
       })
     } catch (error) {
-      this.releaseComputerUse(computerUseKey)
+      this.releaseGatewayMcp(gatewayMcpKey)
       throw error
     }
-    computerUse.bind(session)
+    gatewayMcp.bind(session)
     const permissionScopeId = `prompt_${randomUUID()}`
     const publish = event => this.publishWorkEvent(event, {
       taskId,
@@ -1412,7 +1447,7 @@ export class AcpBackendAdapter {
       if (session.permissionScopeId === permissionScopeId) {
         session.permissionScopeId = null
       }
-      this.releaseComputerUse(computerUseKey)
+      this.releaseGatewayMcp(gatewayMcpKey)
       if (typeof this.client.closeSession === 'function') {
         await this.client.closeSession(session.sessionId).catch(() => {})
       }
@@ -1746,10 +1781,11 @@ export class AcpBackendAdapter {
     await Promise.allSettled(registrations.map(registration => (
       Promise.resolve().then(() => registration.release())
     )))
-    for (const key of [...this.computerUseRegistrations.keys()]) {
-      this.releaseComputerUse(key)
+    for (const key of [...this.gatewayMcpRegistrations.keys()]) {
+      this.releaseGatewayMcp(key)
     }
     await this.computerUse?.close()
+    await this.mediaTools?.close()
     await Promise.allSettled([
       this.sessionToolServer.close(),
       this.client.close(),

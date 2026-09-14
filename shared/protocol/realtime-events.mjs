@@ -53,6 +53,9 @@ export const GatewayServerEvent = Object.freeze({
   MEMORY_CHANGED: 'memory.changed',
   AGENT_ACTIVITY: 'agent.activity',
   CLIENT_STATE: 'client.state',
+  // Gateway media player state { active, title, service }, sent on connect and
+  // whenever playback starts, pauses, resumes or stops.
+  MEDIA_STATE: 'media.state',
   ERROR: 'error',
 })
 

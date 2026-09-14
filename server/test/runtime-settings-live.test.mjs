@@ -35,6 +35,28 @@ test('settings expose the listening, wake word, follow-up and camera options', (
   assert.equal(settings.roboticVoice, false)
 })
 
+test('settings expose the media player options with their defaults', () => {
+  const settings = readRuntimeSettings({
+    detectBrowsers: () => [{
+      id: 'edge',
+      label: 'Microsoft Edge',
+      binary: '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+      bundleId: 'com.microsoft.edgemac',
+    }],
+  })
+  assert.equal(settings.mediaBrowser, 'auto')
+  assert.equal(settings.mediaReturnToAssistant, false)
+  assert.equal(settings.mediaPauseWhileTalking, true)
+  assert.deepEqual(settings.mediaBrowserOptions, [
+    { id: 'auto', label: 'Automatic', installed: true },
+    { id: 'chrome', label: 'Google Chrome', installed: false },
+    { id: 'edge', label: 'Microsoft Edge', installed: true },
+    { id: 'chromium', label: 'Chromium', installed: false },
+    { id: 'brave', label: 'Brave', installed: false },
+  ])
+  assert.equal(readRuntimeSettings({ detectBrowsers: () => [] }).mediaBrowserOptions[0].installed, false)
+})
+
 test('saving the live settings persists them to config.env', () => {
   const result = updateRuntimeSettings({
     listeningMode: 'wake_word',
@@ -103,6 +125,27 @@ test('each voice keeps its own persona, saved without a restart', async () => {
   }
 })
 
+test('saving the media settings persists them and needs no restart', () => {
+  const result = updateRuntimeSettings({
+    mediaBrowser: 'brave',
+    mediaReturnToAssistant: true,
+    mediaPauseWhileTalking: false,
+  })
+  assert.deepEqual(result.changed, ['mediaBrowser', 'mediaReturnToAssistant', 'mediaPauseWhileTalking'])
+  assert.equal(settingsNeedRestart(result.changed), false)
+  const file = readFileSync(join(configDirectory, 'config.env'), 'utf8')
+  assert.match(file, /^QWEN_AUDIO_MEDIA_BROWSER=brave$/m)
+  assert.match(file, /^QWEN_AUDIO_MEDIA_RETURN_TO_ASSISTANT=true$/m)
+  assert.match(file, /^QWEN_AUDIO_MEDIA_PAUSE_WHILE_TALKING=false$/m)
+  const settings = readRuntimeSettings({ detectBrowsers: () => [] })
+  assert.equal(settings.mediaBrowser, 'brave')
+  assert.equal(settings.mediaReturnToAssistant, true)
+  assert.equal(settings.mediaPauseWhileTalking, false)
+  for (const patch of [{ mediaBrowser: 'safari' }, { mediaBrowser: 'firefox' }]) {
+    assert.throws(() => updateRuntimeSettings(patch), error => error.status === 400)
+  }
+})
+
 test('a restart reads the live settings from config.env, not the inherited env', () => {
   const env = restartEnvironment({
     PATH: '/usr/bin',
@@ -111,6 +154,9 @@ test('a restart reads the live settings from config.env, not the inherited env',
     QWEN_AUDIO_FOLLOW_UP_SECONDS: '5',
     QWEN_AUDIO_CAMERA_ENABLED: 'false',
     QWEN_AUDIO_ROBOTIC_VOICE: 'true',
+    QWEN_AUDIO_MEDIA_BROWSER: 'chrome',
+    QWEN_AUDIO_MEDIA_RETURN_TO_ASSISTANT: 'false',
+    QWEN_AUDIO_MEDIA_PAUSE_WHILE_TALKING: 'true',
   })
   assert.deepEqual(env, { PATH: '/usr/bin' })
 })

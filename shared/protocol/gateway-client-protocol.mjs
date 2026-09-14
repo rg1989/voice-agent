@@ -63,6 +63,7 @@ export const GatewayClientCapability = Object.freeze({
   CLIENT_EVENTS: 'client.events',
   SESSION_OUTPUT_VOICE: 'session.output_voice',
   CLIENT_ACTION_ENTER_SLEEP: 'client.actions.desktop.presence.enter_sleep',
+  CLIENT_ACTION_SHOW_CONVERSATION: 'client.actions.show_conversation',
   SESSION_REPLAY: 'session.replay',
   SESSION_TAKEOVER: 'session.takeover',
   SESSION_HEARTBEAT: 'session.heartbeat',
@@ -70,6 +71,7 @@ export const GatewayClientCapability = Object.freeze({
 
 export const GatewayClientActionName = Object.freeze({
   ENTER_SLEEP: 'desktop.presence.enter_sleep',
+  SHOW_CONVERSATION: 'show_conversation',
 })
 
 // The complete roadmap vocabulary is published so clients and extensions do
@@ -94,6 +96,7 @@ export const GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES = Object.freeze([
   GatewayClientCapability.CLIENT_EVENTS,
   GatewayClientCapability.SESSION_OUTPUT_VOICE,
   GatewayClientCapability.CLIENT_ACTION_ENTER_SLEEP,
+  GatewayClientCapability.CLIENT_ACTION_SHOW_CONVERSATION,
   GatewayClientCapability.SESSION_REPLAY,
   GatewayClientCapability.SESSION_TAKEOVER,
   GatewayClientCapability.SESSION_HEARTBEAT,
@@ -199,6 +202,13 @@ const EventNameSchema = z.string()
   .max(120)
   .regex(/^[a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*)+$/)
 
+// Client Action names are dotted like event names, except environment-neutral
+// actions such as show_conversation, which are a single word.
+const ClientActionNameSchema = z.string()
+  .min(3)
+  .max(120)
+  .regex(/^[a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*)*$/)
+
 export const GatewayClientEventPublishSchema = GatewayClientEnvelopeSchema.extend({
   type: z.literal(GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH),
   name: EventNameSchema,
@@ -234,7 +244,7 @@ export const GatewaySessionOutputVoiceUpdatedSchema = GatewayServerEnvelopeSchem
 
 export const GatewayClientActionRequestSchema = GatewayServerEnvelopeSchema.extend({
   type: z.literal(GatewayClientProtocolEvent.CLIENT_ACTION_REQUEST),
-  name: EventNameSchema,
+  name: ClientActionNameSchema,
   arguments: z.unknown().optional(),
 })
 

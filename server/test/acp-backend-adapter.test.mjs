@@ -2589,6 +2589,160 @@ test('offers no computer control when it is disabled', async () => {
   await adapter.close()
 })
 
+function fakeMediaPlayer() {
+  return {
+    async play(options) { return { status: 'playing', ...options } },
+    async stop() { return { status: 'stopped' } },
+    async control(action) { return { status: 'ok', action } },
+  }
+}
+
+function recordingClient(tools) {
+  const sessionMcp = new Map()
+  let prompted = false
+  return {
+    sessionMcp,
+    async newSession(options) {
+      const sessionId = options.role === 'coordinator'
+        ? 'coordinator-session'
+        : 'project-session'
+      sessionMcp.set(sessionId, options.mcpServers)
+      return { sessionId, cwd: options.cwd, response: {} }
+    },
+    async resumeSession(sessionId, options) {
+      sessionMcp.set(`resume:${sessionId}`, options.mcpServers)
+      return { sessionId, cwd: options.cwd, response: {} }
+    },
+    async prompt(sessionId) {
+      if (sessionId === 'project-session') {
+        return { content: 'project complete', response: { stopReason: 'end_turn' } }
+      }
+      if (!prompted) {
+        prompted = true
+        await tools.registrations[0].call('startSession', { prompt: 'play something' })
+      }
+      return { content: completed('coordinator done'), response: { stopReason: 'end_turn' } }
+    },
+    async close() {},
+  }
+}
+
+test('gives every Session the media tools next to computer control, one registration per Session', async () => {
+  const tools = fakeToolServer()
+  const client = recordingClient(tools)
+  const adapter = new AcpBackendAdapter({
+    protocol: 'qoder',
+    directory: '/coordinator',
+    client,
+    sessionToolServer: tools,
+    computerUse: '/repo/node_modules/@qwen-code/open-computer-use/bin/open-computer-use',
+    mediaPlayer: fakeMediaPlayer(),
+  })
+  const result = await adapter.coordinatorTurn('first turn', {
+    ownerId: 'owner-one',
+    coordinationRunId: 'work-one',
+  })
+  await result.run.delegation?.promise
+
+  const coordinator = client.sessionMcp.get('coordinator-session')
+  assert.deepEqual(
+    coordinator.map(server => server.name),
+    ['test', 'computer-use', 'qwen_audio_media'],
+  )
+  assert.ok(coordinator.every(server => server.type === 'http'))
+  const project = client.sessionMcp.get('project-session')
+  assert.deepEqual(project.map(server => server.name), ['computer-use', 'qwen_audio_media'])
+  assert.match(new URL(project[1].url).pathname, /^\/media/)
+  assert.equal(
+    tools.serverRegistrations.filter(registration => (
+      registration.descriptor.name === 'qwen_audio_media'
+    )).length,
+    2,
+  )
+
+  await adapter.close()
+  assert.ok(tools.serverRegistrations.every(registration => registration.released))
+})
+
+test('offers the media tools without computer control, and none where Sessions take no session MCP servers', async () => {
+  const tools = fakeToolServer()
+  const client = recordingClient(tools)
+  const adapter = new AcpBackendAdapter({
+    protocol: 'qoder',
+    directory: '/coordinator',
+    client,
+    sessionToolServer: tools,
+    computerUse: null,
+    mediaPlayer: fakeMediaPlayer(),
+  })
+  const result = await adapter.coordinatorTurn('turn', {
+    ownerId: 'owner-one',
+    coordinationRunId: 'work-one',
+  })
+  await result.run.delegation?.promise
+  assert.deepEqual(
+    client.sessionMcp.get('coordinator-session').map(server => server.name),
+    ['test', 'qwen_audio_media'],
+  )
+  await adapter.close()
+
+  const noSessionMcp = new AcpBackendAdapter({
+    protocol: 'acp',
+    directory: '/project',
+    sessionStatePath: null,
+    computerUse: null,
+    mediaPlayer: fakeMediaPlayer(),
+    client: { async close() {} },
+    sessionToolServer: fakeToolServer(),
+    profile: {
+      label: 'Test ACP',
+      capabilities: {},
+      acpConnection: { kind: 'process' },
+      externalMcp: false,
+      sessionMcp: false,
+    },
+  })
+  assert.equal(noSessionMcp.mediaToolsInstance(), null)
+  assert.deepEqual((await noSessionMcp.gatewayMcpFor('coordinator:owner')).servers, [])
+  await noSessionMcp.close()
+
+  const noServerRegistrations = new AcpBackendAdapter({
+    protocol: 'qoder',
+    directory: '/coordinator',
+    computerUse: null,
+    mediaPlayer: fakeMediaPlayer(),
+    client: { async close() {} },
+    sessionToolServer: { async register() { return {} }, async close() {} },
+  })
+  assert.equal(noServerRegistrations.mediaToolsInstance(), null)
+  await noServerRegistrations.close()
+})
+
+test('offers the media tools from a media player handed over after the adapter was created', async () => {
+  let player = null
+  const tools = fakeToolServer()
+  const adapter = new AcpBackendAdapter({
+    protocol: 'qoder',
+    directory: '/coordinator',
+    computerUse: null,
+    client: { async close() {} },
+    sessionToolServer: tools,
+    mediaPlayer: () => player,
+  })
+  assert.equal(adapter.mediaToolsInstance(), null)
+  assert.deepEqual((await adapter.gatewayMcpFor('coordinator:early')).servers, [])
+  assert.equal(tools.serverRegistrations.length, 0)
+
+  player = fakeMediaPlayer()
+  assert.equal(adapter.mediaToolsInstance().player, player)
+  assert.deepEqual(
+    (await adapter.gatewayMcpFor('coordinator:early')).servers.map(server => server.name),
+    ['qwen_audio_media'],
+  )
+  await adapter.close()
+  assert.ok(tools.serverRegistrations.every(registration => registration.released))
+})
+
 test('asks the user before computer control even in full permission mode', async () => {
   const events = []
   const adapter = new AcpBackendAdapter({

@@ -5,7 +5,10 @@ import { PERMISSION_DECISIONS } from '../core/work-authorization.mjs'
 import { createServer } from 'http'
 import { randomUUID } from 'node:crypto'
 import { resolve } from 'path'
-import { agent as defaultAgent } from '../backend/adapters/agent-client.mjs'
+import {
+  agent as defaultAgent,
+  setAgentMediaPlayer,
+} from '../backend/adapters/agent-client.mjs'
 import { BackendAvailability } from '../backend/availability.mjs'
 import { BackendWorkRuntime } from '../backend/backend-work-runtime.mjs'
 import { config as defaultConfig } from '../core/config.mjs'
@@ -30,6 +33,8 @@ import {
   listFolders,
 } from './runtime-settings.mjs'
 import { LiveSettings } from '../core/live-settings.mjs'
+import { MediaPlayer } from '../media/player.mjs'
+import { resolveYouTube } from '../media/youtube-resolver.mjs'
 import {
   GatewayAccessManager,
   GatewayDeviceRegistry,
@@ -122,6 +127,9 @@ export function createGatewayApplication({
   spawnThinkingDescription = '',
   gatewayAccess = null,
   publicEndpoint = undefined,
+  // One player per Gateway. Omit to create it; null runs without media.
+  mediaPlayer = undefined,
+  resolveMedia = resolveYouTube,
 } = {}) {
 const workBackend = backendRuntime || new BackendWorkRuntime({ backend: agent })
 const sessionJournalRuntime = sessionJournal || new SessionJournalRegistry({
@@ -707,6 +715,21 @@ app.get('/api/input', (req, res) => {
 // subscribe to this store and apply them live.
 const liveSettings = new LiveSettings(config)
 
+// Voice tools, the Settings panel and backend tools all drive this one
+// player browser; its settings are live, so saving never restarts it away.
+const mediaPlayerRuntime = mediaPlayer === undefined
+  ? new MediaPlayer({
+      getSettings: () => liveSettings.get(),
+      configDir: config.configDirectory,
+      logger,
+    })
+  : mediaPlayer
+// Backend Agents drive the same player as the voice tools. The shared adapter
+// may already exist (see agent-client.mjs); it reads this player when a
+// Session first needs it. An injected agent is the embedder's own and is left
+// alone.
+if (agent === defaultAgent) setAgentMediaPlayer(mediaPlayerRuntime)
+
 app.get('/api/settings', (req, res) => {
   res.setHeader('cache-control', 'no-store')
   res.json(readRuntimeSettings())
@@ -778,6 +801,22 @@ app.post('/api/settings', (req, res) => {
     })
   }
   return res.json({ changed: result.changed, restarting, settings })
+})
+
+// Opens the player's own profile on YouTube in a normal window, so the user
+// signs in once by hand. Same-origin and local identity already gate /api.
+app.post('/api/media/setup', async (req, res) => {
+  if (!mediaPlayerRuntime) {
+    return res.status(503).json({ error: 'media player is not available' })
+  }
+  try {
+    return res.json(await mediaPlayerRuntime.setup())
+  } catch (error) {
+    return res.status(error.code === 'no_browser' ? 409 : 500).json({
+      error: error.message,
+      code: error.code || 'launch_failed',
+    })
+  }
 })
 
 app.get('/api/backend/ui', async (req, res, next) => {
@@ -1054,6 +1093,8 @@ realtimeGateway = attachRealtimeGateway(server, {
   clientCommandRuntime: runtimeCommands,
   clientEventRouter: gatewayEventRouter,
   liveSettings,
+  mediaPlayer: mediaPlayerRuntime,
+  resolveMedia,
   taskManager,
   conversationSync,
   config,
@@ -1099,6 +1140,10 @@ const close = () => {
     // not survive into the next run.
     inputArbitration.close()
     await realtimeGateway?.close?.()
+    // A player left running would outlive every way to control it. Stopping
+    // can take 10 s and index.mjs exits 2 s after SIGTERM, so the stop runs
+    // alongside the flushes below instead of ahead of them.
+    const mediaStopping = mediaPlayerRuntime?.stop({ reason: 'user' }).catch(() => {})
     await frontendMcpRuntime?.close?.()
     await frontendOpenApiRuntime?.close?.()
     for (const module of [...optionalModules].reverse()) await module.close?.()
@@ -1107,6 +1152,10 @@ const close = () => {
     conversationHistoryRuntime.close?.()
     await sessionJournalRuntime.flush()
     await taskStore?.flush?.()
+    await Promise.race([
+      mediaStopping,
+      new Promise(resolve => setTimeout(resolve, 1500).unref()),
+    ])
     if (!server.listening) return
     await new Promise((resolveClose, rejectClose) => {
       server.close(error => {
@@ -1141,6 +1190,7 @@ return {
     identityManager,
     inputArbitration,
     inputAssets: inputAssetRegistry,
+    mediaPlayer: mediaPlayerRuntime,
     notesStore,
     permissionPolicy,
     realtimeGateway,

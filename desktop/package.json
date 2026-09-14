@@ -1,5 +1,6 @@
 {
   "name": "@qwen-audio-agent/desktop",
+  "desktopName": "qwen-audio-agent.desktop",
   "private": true,
   "version": "1.11.0",
   "type": "module",

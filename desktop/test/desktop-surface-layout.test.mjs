@@ -196,3 +196,66 @@ test('uses the larger side and caps the stack when neither side fits', () => {
   assert.equal(result.bounds.y, 0)
   assert.equal(result.bounds.height, 554)
 })
+
+test('grows a caption-only surface beside the orb', () => {
+  assert.deepEqual(desktopSurfaceSize(0, { caption: true }), {
+    width: DESKTOP_TASK_SURFACE_WIDTH,
+    height: 240,
+  })
+  const result = desktopSurfaceLayout({
+    bounds: { x: 900, y: 24, width: 172, height: 204 },
+    caption: true,
+    workArea,
+  })
+  assert.equal(result.placement, 'below')
+  assert.deepEqual(result.bounds, { x: 806, y: 24, width: 360, height: 240 })
+  assert.equal(result.orbOffsetX, 94)
+})
+
+test('stacks the caption between the orb and task cards above it', () => {
+  const result = desktopSurfaceLayout({
+    bounds: { x: 900, y: 570, width: 172, height: 204 },
+    taskCount: 2,
+    caption: true,
+    workArea,
+  })
+  assert.equal(result.placement, 'above')
+  assert.deepEqual(result.bounds, { x: 806, y: 402, width: 360, height: 372 })
+  assert.deepEqual(desktopOrbBounds(result.bounds, {
+    taskCount: 2,
+    caption: true,
+    placement: result.placement,
+    orbOffsetX: result.orbOffsetX,
+  }), { x: 900, y: 570, width: 172, height: 204 })
+})
+
+test('keeps the orb anchored when a caption appears over task cards', () => {
+  const result = desktopSurfaceLayout({
+    bounds: { x: 806, y: 452, width: 360, height: 322 },
+    currentTaskCount: 2,
+    taskCount: 2,
+    caption: true,
+    placement: 'above',
+    orbOffsetX: 94,
+    workArea,
+  })
+  assert.deepEqual(result.bounds, { x: 806, y: 402, width: 360, height: 372 })
+})
+
+test('keeps the orb anchored when the caption fades away', () => {
+  const result = desktopSurfaceLayout({
+    bounds: { x: 806, y: 24, width: 360, height: 240 },
+    currentCaption: true,
+    caption: false,
+    placement: 'below',
+    orbOffsetX: 94,
+    workArea,
+  })
+  assert.deepEqual(result.bounds, {
+    x: 900,
+    y: 24,
+    width: DESKTOP_ORB_WIDTH,
+    height: DESKTOP_ORB_HEIGHT,
+  })
+  assert.equal(result.orbOffsetX, 0)
+})

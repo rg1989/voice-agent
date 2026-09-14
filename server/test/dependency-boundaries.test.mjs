@@ -19,6 +19,7 @@ const allowedDependencies = {
     'delivery',
     'frontend',
     'frontend-provider',
+    'media',
     'optional-module-assembly',
     'session',
     'task',
@@ -54,6 +55,9 @@ const allowedDependencies = {
   backend: new Set(['backend', 'core', 'shared']),
   client: new Set(['client', 'delivery', 'shared', 'task']),
   delivery: new Set(['delivery']),
+  // The Gateway media player: browser process, transport and search. It
+  // depends only on core; the composition root hands it to its consumers.
+  media: new Set(['core', 'media', 'shared']),
   conversation: new Set(['conversation', 'core', 'shared']),
   session: new Set(['session', 'shared']),
   task: new Set(['backend', 'core', 'session', 'task']),

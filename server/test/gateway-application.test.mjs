@@ -7,6 +7,11 @@ import { dirname, join } from 'node:path'
 import test from 'node:test'
 import WebSocket, { WebSocketServer } from 'ws'
 import { createGatewayApplication } from '../src/app/gateway-application.mjs'
+import {
+  agent as defaultAgent,
+  createAgentClient,
+  setAgentMediaPlayer,
+} from '../src/backend/adapters/agent-client.mjs'
 import { GATEWAY_CLIENT_REVOKED_CLOSE_CODE } from '../../shared/protocol/gateway-client-protocol.mjs'
 import { GatewayClient } from '../../shared/gateway/client-sdk.mjs'
 import { decodeGatewayDirectConnection } from '../../shared/gateway/remote-access.mjs'
@@ -1505,5 +1510,153 @@ test('wires rolling summary and preference learning when enabled', async () => {
     )
   } finally {
     await app.close()
+  }
+})
+
+test('one media player per Gateway opens the sign-in window and stops with the Gateway', async () => {
+  const calls = []
+  let setupError = null
+  // An EventEmitter with state(), like MediaPlayer: code that subscribes to the
+  // player while the application is built must find on, off and state().
+  const mediaPlayer = Object.assign(new EventEmitter(), {
+    setup: async () => {
+      calls.push('setup')
+      if (setupError) throw setupError
+      return { status: 'opened', browser: 'edge' }
+    },
+    // Never resolves: a browser that is slow to exit must not hold up the
+    // session journal and task store flushes in close().
+    stop: options => {
+      calls.push(['stop', options])
+      return new Promise(() => {})
+    },
+    state: () => ({
+      active: false,
+      paused: false,
+      title: null,
+      url: null,
+      service: null,
+      browser: null,
+      pid: null,
+      startedAt: null,
+      controlSerial: 0,
+    }),
+  })
+  const application = createTestGatewayApplication({
+    parentPort: null,
+    autoStart: false,
+    frontendMcp: null,
+    frontendOpenApi: null,
+    mediaPlayer,
+  })
+  let closed = false
+  try {
+    assert.equal(application.services.mediaPlayer, mediaPlayer)
+    application.start({ host: '127.0.0.1', port: 0 })
+    if (!application.server.listening) await once(application.server, 'listening')
+    const { port } = application.server.address()
+    const request = () => requestJson({
+      port,
+      path: '/api/media/setup',
+      method: 'POST',
+      headers: { Host: `127.0.0.1:${port}` },
+      body: {},
+    })
+
+    const opened = await request()
+    assert.equal(opened.status, 200)
+    assert.deepEqual(opened.body, { status: 'opened', browser: 'edge' })
+
+    setupError = Object.assign(new Error('no supported player browser is installed'), { code: 'no_browser' })
+    const missing = await request()
+    assert.equal(missing.status, 409)
+    assert.deepEqual(missing.body, { error: 'no supported player browser is installed', code: 'no_browser' })
+
+    let timer
+    const outcome = await Promise.race([
+      application.close().then(() => 'closed'),
+      new Promise(resolve => { timer = setTimeout(resolve, 5000, 'stuck') }),
+    ])
+    clearTimeout(timer)
+    closed = true
+    if (outcome !== 'closed') application.server.close()
+    assert.equal(outcome, 'closed')
+    assert.deepEqual(calls, ['setup', 'setup', ['stop', { reason: 'user' }]])
+  } finally {
+    if (!closed) await application.close()
+  }
+})
+
+test('hands its media player to backend adapters of the default agent only', async () => {
+  // The realtime gateway's MediaClientBridge (P2) subscribes with on/off and
+  // reads state() while the application is built, so the fake is an emitter.
+  const mediaPlayer = Object.assign(new EventEmitter(), {
+    setup: async () => ({ status: 'opened', browser: 'edge' }),
+    play: async options => ({ status: 'playing', ...options, browser: 'edge' }),
+    stop: async () => ({ status: 'idle' }),
+    control: async action => ({ status: 'ok', action }),
+    state: () => ({
+      active: false,
+      paused: false,
+      title: null,
+      url: null,
+      service: null,
+      browser: null,
+      pid: null,
+      startedAt: null,
+    }),
+  })
+  const backendClient = () => createAgentClient({
+    protocol: 'opencode',
+    backends: {
+      opencode: { baseUrl: 'http://opencode.test', directory: '/workspace' },
+    },
+    sessionStatePath: null,
+    acpClient: {
+      start: async () => ({ agentCapabilities: { mcpCapabilities: { http: true } } }),
+      close: async () => {},
+    },
+    sessionToolServer: {
+      register: async () => ({ descriptor: { type: 'http', name: 'test', url: 'http://127.0.0.1/mcp', headers: [] }, release() {} }),
+      registerServer: async registration => ({
+        descriptor: { type: 'http', name: registration.name, url: `http://127.0.0.1${registration.path}`, headers: [] },
+        release() {},
+      }),
+      close: async () => {},
+    },
+  })
+  setAgentMediaPlayer(null)
+  const embedded = createTestGatewayApplication({
+    parentPort: null,
+    autoStart: false,
+    frontendMcp: null,
+    frontendOpenApi: null,
+    mediaPlayer,
+  })
+  try {
+    // An injected agent is the embedder's own: the shared agent client is left alone.
+    const client = backendClient()
+    assert.equal(client.adapter.mediaToolsInstance(), null)
+    await client.close()
+  } finally {
+    await embedded.close()
+  }
+
+  const application = createTestGatewayApplication({
+    parentPort: null,
+    autoStart: false,
+    frontendMcp: null,
+    frontendOpenApi: null,
+    agent: defaultAgent,
+    mediaPlayer,
+  })
+  try {
+    assert.equal(application.services.mediaPlayer, mediaPlayer)
+    const client = backendClient()
+    assert.equal(client.adapter.mediaToolsInstance().player, mediaPlayer)
+    await client.close()
+  } finally {
+    setAgentMediaPlayer(null)
+    await application.close()
   }
 })

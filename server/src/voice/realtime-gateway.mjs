@@ -48,6 +48,7 @@ import { RealtimeProviderSession } from './realtime-provider-session.mjs'
 import { VisualInputBuffer } from './visual-input-buffer.mjs'
 import { RealtimeRecoveryContext } from './realtime-recovery-context.mjs'
 import { SleepController } from './sleep-controller.mjs'
+import { MediaTalkPause } from './media-talk-pause.mjs'
 import {
   createWakeWordDetectorLazily,
   isStopListeningPhrase,
@@ -91,6 +92,7 @@ import {
 import { PresenceController } from '../client/presence-controller.mjs'
 import { GatewayClientReplayBuffer } from '../transport/gateway-client-replay-buffer.mjs'
 import { ActiveClientLeases } from '../client/active-client-leases.mjs'
+import { MediaClientBridge } from '../client/media-client-bridge.mjs'
 
 const MAX_PENDING_AUDIO_CHUNKS = 30
 const RESPONSE_START_WATCHDOG_MS = 12000
@@ -225,6 +227,9 @@ export function attachRealtimeGateway(server, {
   clientCommandRuntime = null,
   clientEventRouter = null,
   liveSettings = new LiveSettings(config),
+  // The Gateway-wide media player and its search, shared by every connection.
+  mediaPlayer = null,
+  resolveMedia = null,
   wakeWordDetectorFactory = createWakeWordDetectorLazily,
 }) {
   const wss = new WebSocketServer({
@@ -248,6 +253,16 @@ export function attachRealtimeGateway(server, {
   const activeVoiceClients = new ActiveVoiceClients()
   const activeClientLeases = new ActiveClientLeases()
   const voiceConnections = new Map()
+  // One player serves the whole Gateway. Every connection registers with the
+  // bridge, so player changes and return requests reach each Client. A player
+  // that is not an event emitter (a partial test fake) gets no bridge.
+  const mediaClients = mediaPlayer && typeof mediaPlayer.on === 'function'
+    ? new MediaClientBridge({
+        mediaPlayer,
+        getSettings: () => liveSettings.get(),
+        logger,
+      })
+    : null
   const replayBuffers = new Map()
   const observers = new SessionObservers(sessionObservers)
   const frontendToolSourcesReady = Promise.all(
@@ -453,6 +468,7 @@ export function attachRealtimeGateway(server, {
           permissionPending: hasPendingBackendPermission(),
           inputPending: hasPendingBackendInput(),
           liveSettings: listeningSettings(),
+          mediaPlayer,
         }),
         tools: frontendSourceToolDefinitions(frontendToolSources),
       },
@@ -749,12 +765,29 @@ export function attachRealtimeGateway(server, {
       onWakeCheckEnd: (verified, turnIds) => endWakeHold(verified, turnIds),
       onChange: status => {
         send(ws, { type: GatewayServerEvent.VOICE_LISTENING, ...status })
-        if (status.state === ListeningState.ARMED) endSpeechCutByArm()
+        if (status.state === ListeningState.ARMED) {
+          endSpeechCutByArm()
+          // Back to waiting for the wake word, the exchange is over (a bare
+          // wake word no request followed): let a talk pause resume.
+          void mediaTalkPause.turnEnded()
+        }
       },
       onError: error => send(ws, {
         type: GatewayServerEvent.ERROR,
         message: `Wake word detection is unavailable: ${error?.message || error}`,
       }),
+      logger: connectionLogger,
+    })
+    // Pauses the Gateway player while the user talks and resumes it once the
+    // answer has settled, unless that turn paused, stopped or replaced it.
+    const mediaTalkPause = new MediaTalkPause({
+      player: mediaPlayer,
+      getSettings: () => liveSettings.get(),
+      isResponding: () => (
+        turns.userSpeaking
+        || Boolean(responseTurnCandidate)
+        || announcementWindow.isPlaying()
+      ),
       logger: connectionLogger,
     })
     const voiceClient = {
@@ -919,6 +952,9 @@ export function attachRealtimeGateway(server, {
       presenceController,
       listeningGate,
       liveSettings: { get: listeningSettings },
+      mediaPlayer,
+      resolveMedia,
+      mediaTalkPause,
       onAgentActivity: activity => send(ws, {
         type: GatewayServerEvent.AGENT_ACTIVITY,
         ...activity,
@@ -984,8 +1020,10 @@ export function attachRealtimeGateway(server, {
           turnId: context.turnId,
           origin: 'model',
         })
-        // No response will settle this turn; let the awake window run out.
+        // No response will settle this turn; let the awake window run out
+        // and let a player paused while the user talked resume.
         listeningGate.responseSettled()
+        void mediaTalkPause.turnEnded()
         realtimeSession.reconnect().catch(error => send(ws, {
           type: 'error',
           message: error.message,
@@ -1009,6 +1047,12 @@ export function attachRealtimeGateway(server, {
         ) presentationRuntime.cancelPlayback(id, { reason })
       }
       realtimeSession.cancelResponse()
+      // A refused turn may never get a response to settle it, and whatever it
+      // still says is never heard: let a player paused while the user talked
+      // resume. This does nothing while the user still speaks. A bare wake
+      // word does not end the exchange: its request follows, and the gate
+      // re-arming releases the pause if none does.
+      if (reason !== 'wake_word_only') queueMicrotask(() => { void mediaTalkPause.turnEnded() })
       send(ws, { type: GatewayServerEvent.PLAYBACK_CLEAR, reason })
       // No response may have started yet; do not leave the client processing.
       if (!turns.userSpeaking) {
@@ -1124,6 +1168,7 @@ export function attachRealtimeGateway(server, {
       reportFrontendError,
       onSpeechStarted: fields => {
         listeningGate.speechStarted(fields.turnId)
+        mediaTalkPause.speechStarted()
         observeSessionAudio({ type: 'speech_started', ...fields })
         // Speech the provider reports after the gate re-armed (audio sent just
         // before): end it once the input runtime has opened the turn.
@@ -1182,7 +1227,10 @@ export function attachRealtimeGateway(server, {
         // No response follows an invalid turn; let the awake window run out
         // once the speech state has ended.
         if (fields.reason === 'turn_invalid') {
-          queueMicrotask(() => listeningGate.responseSettled())
+          queueMicrotask(() => {
+            listeningGate.responseSettled()
+            void mediaTalkPause.turnEnded()
+          })
         }
       },
     })
@@ -1205,7 +1253,11 @@ export function attachRealtimeGateway(server, {
       responseContextCleanupMs: RESPONSE_CONTEXT_CLEANUP_MS,
       turnCitations,
       onResponseSettled: (context, responseId) => {
-        if (!silenceReason(context?.turnId)) listeningGate.responseSettled(responseId)
+        const refusal = silenceReason(context?.turnId)
+        if (!refusal) listeningGate.responseSettled(responseId)
+        // The cancelled answer to a bare wake word does not end the exchange
+        // either: the request still follows.
+        if (refusal !== 'wake_word_only') void mediaTalkPause.turnEnded()
       },
     })
 
@@ -1608,6 +1660,11 @@ export function attachRealtimeGateway(server, {
     })
 
     send(ws, { type: GatewayServerEvent.VOICE_STATE, state: 'idle' })
+    const detachMediaClient = mediaClients?.attach({
+      send: event => send(ws, event),
+      clientActions,
+      isActiveVoiceClient: () => activeVoiceClients.isActive(ownerId, voiceClient),
+    }) || (() => {})
     send(ws, { type: GatewayServerEvent.VOICE_LISTENING, ...listeningGate.status() })
     const onLiveSettingsChange = (next, previous) => {
       listeningGate.applySettings(listeningSettings())
@@ -2059,6 +2116,15 @@ export function attachRealtimeGateway(server, {
             GatewayClientCapability.CLIENT_ACTION_ENTER_SLEEP,
           )
         }
+        if (
+          clientProtocol.capabilities.includes(
+            GatewayClientCapability.CLIENT_ACTION_SHOW_CONVERSATION,
+          )
+        ) {
+          clientActionCapabilities.add(
+            GatewayClientCapability.CLIENT_ACTION_SHOW_CONVERSATION,
+          )
+        }
         clientContext.actions = [
           ...(clientActions.supports(ClientActionName.ENTER_SLEEP)
             ? [ClientActionName.ENTER_SLEEP]
@@ -2289,10 +2355,12 @@ export function attachRealtimeGateway(server, {
       clearTimeout(permissionRetryTimer)
       permissionRetryTimer = null
       sleepController?.close()
+      detachMediaClient()
       presenceController.close()
       liveSettings.off('change', onLiveSettingsChange)
       liveSettings.off('persona', onPersonaChange)
       listeningGate.close()
+      void mediaTalkPause.close()
       realtimeSession.close()
       observeSessionAudio({ type: 'session_ended' })
       observers.emit('onSessionClosed', { ownerId, sessionId, logger: connectionLogger })
@@ -2330,6 +2398,7 @@ export function attachRealtimeGateway(server, {
     },
     async close() {
       clearInterval(heartbeat)
+      mediaClients?.close()
       for (const client of wss.clients) client.close()
       await new Promise(resolveClose => {
         wss.close(() => resolveClose())

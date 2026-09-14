@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { redactLogValue } from '../../../../../shared/logger.mjs'
 import { AgentError } from '../../agent-error.mjs'
 import { ACP_SESSION_TOOL_NAMES } from './session-tools.mjs'
+import { MEDIA_TOOL_NAMES } from './media-tools.mjs'
 import {
   AuthorizationStatus,
   COMPUTER_USE_AUTHORIZATION_CATEGORY,
@@ -116,7 +117,9 @@ export class PermissionBroker {
 
   async request(params, { signal, session, explicit = false } = {}) {
     const name = clean(params?.toolCall?.name || params?.toolCall?.title)
-    const internal = ACP_SESSION_TOOL_NAMES.some(toolName => (
+    // Gateway-owned tools that need no prompt: the coordinator Session tools and
+    // media playback. Computer control is never in this list.
+    const internal = [...ACP_SESSION_TOOL_NAMES, ...MEDIA_TOOL_NAMES].some(toolName => (
       name === toolName
       || name.endsWith(`__${toolName}`)
       || name.startsWith(`${toolName} (`)

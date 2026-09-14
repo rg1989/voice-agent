@@ -151,6 +151,7 @@ QWEN_AUDIO_AGENT_OPENCODE_ISOLATE_USER_CONFIG=true
 | `QWEN_AUDIO_KNOWLEDGE_TOOL_ENABLED` | `true`；设为 `false` 时隐藏 `knowledge` |
 | `QWEN_AUDIO_NOTES_TOOL_ENABLED` | `true`；设为 `false` 时隐藏 `notes` |
 | `QWEN_AUDIO_RECALL_TOOL_ENABLED` | `true`；设为 `false` 时隐藏 `recall` |
+| `QWEN_AUDIO_MEDIA_TOOLS_ENABLED` | `true`；设为 `false` 时隐藏 `play_media` 和 `control_media` |
 | `QWEN_AUDIO_FRONTEND_PROFILE` | 空；轻量 Frontend Profile JSON 文件路径 |
 | `QWEN_AUDIO_FRONTEND_MCP_CONFIG` | 空；前台 MCP 版本化 JSON 文件的绝对路径 |
 | `QWEN_AUDIO_FRONTEND_OPENAPI_CONFIG` | 空；前台 OpenAPI 版本化 JSON 配置文件的绝对路径 |
@@ -163,6 +164,9 @@ QWEN_AUDIO_AGENT_OPENCODE_ISOLATE_USER_CONFIG=true
 | `QWEN_AUDIO_WAKE_WORD` | `hey_jarvis`；也可设为 `hey_lisa`、`hey_megan`、`hey_mycroft` 或 `glados`。Gateway 在所在主机上用 openWakeWord 模型检测唤醒词，首次需要某个模型文件时从 GitHub 下载并校验 |
 | `QWEN_AUDIO_FOLLOW_UP_SECONDS` | `5`；取 `0` 到 `10`，四舍五入为整数秒。`wake_word` 模式下，回复结束后 Gateway 继续聆听的时长，之后重新等待唤醒词 |
 | `QWEN_AUDIO_ROBOTIC_VOICE` | `false`；设为 `true` 时，Gateway 给发往客户端的回复音频加上机器人音效 |
+| `QWEN_AUDIO_MEDIA_BROWSER` | `auto`；媒体播放器打开的浏览器：`chrome`、`edge`、`chromium` 或 `brave`，`auto` 使用第一个已安装的 |
+| `QWEN_AUDIO_MEDIA_PAUSE_WHILE_TALKING` | `true`；和助手说话时媒体播放器暂停，听完回答后继续播放。设为 `false` 时继续播放 |
+| `QWEN_AUDIO_MEDIA_RETURN_TO_ASSISTANT` | `false`；设为 `true` 时，播放停止后桌面应用打开对话面板 |
 | `SPEECH_TO_SPEECH_REALTIME_URL` | `ws://127.0.0.1:8765/v1/realtime` |
 | `SPEECH_TO_SPEECH_AUTH_TOKEN` | 空；仅用于带 Bearer 认证的代理 |
 | `MINICPM_O_REALTIME_URL` | `ws://127.0.0.1:8006/v1/realtime?mode=audio` |
